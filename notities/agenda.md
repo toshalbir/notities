@@ -1,8 +1,8 @@
-# Notities
+# Notes
 
-## zondag 22 november 2026
+## Sunday 22 November 2026
 
-### Afspraken
+### Appointments
 
 - 07:00 — Test
 - 08:00 — Test 2
@@ -13,9 +13,9 @@
 - 09:45 — yes
 - 10:00 — Super
 
-## woensdag 18 november 2026
+## Wednesday 18 November 2026
 
-### Afspraken
+### Appointments
 
 - 06:30 — Test
 
