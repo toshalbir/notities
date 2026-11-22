@@ -12,7 +12,7 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=10">
+  <link rel="stylesheet" href="./styles.css?v=11">
 </head>
 <body data-font="hand">
   <div class="app">
@@ -42,8 +42,13 @@
 
         <div class="agenda">
           <div class="time-col" id="time-col" aria-hidden="true"></div>
-          <div class="slot-col" id="slot-col"></div>
+          <div class="slot-col" id="slot-col">
+            <div class="now-line" id="now-line" aria-hidden="true"></div>
+          </div>
+          <div class="done-col" id="done-col" aria-label="Mark appointments done"></div>
         </div>
+
+        <div class="last-week" id="last-week"></div>
 
         <section class="free-notes">
           <h2>Notes</h2>
@@ -57,6 +62,9 @@
 
     <footer class="actionbar">
       <span class="sync" id="sync-status" role="status">Saved locally</span>
+      <button class="mini-btn" id="copy-day" type="button" title="Copy day" aria-label="Copy day to clipboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="12" height="13" rx="1.5"/><path d="M9 7V4.5h10V17"/></svg>
+      </button>
       <button class="mini-btn" id="download-md" type="button" title="Download as .md" aria-label="Download as .md">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 17.5v2h15v-2"/></svg>
       </button>
@@ -77,6 +85,7 @@
         <input type="search" id="search-input" placeholder="Word, time or date" autocomplete="off" enterkeyhint="search">
       </div>
       <p class="search-meta" id="search-meta"></p>
+      <div class="tag-chips" id="tag-chips"></div>
       <div class="results" id="search-results"></div>
     </section>
   </div>
@@ -117,6 +126,29 @@
             <option value="system">Plain (SF / Helvetica)</option>
           </select>
         </div>
+        <div class="form-row">
+          <label for="cfg-ink">Ink colour</label>
+          <select id="cfg-ink">
+            <option value="blue">Blue-black</option>
+            <option value="black">Black</option>
+            <option value="gray">Pencil grey</option>
+          </select>
+        </div>
+        <div class="recurring-block">
+          <h3>Recurring items</h3>
+          <p class="hint">Weekly appointments or fixed monthly payments (e.g. direct debits). Use -1 for the last day of the month.</p>
+          <div id="rule-list" class="rule-list"></div>
+          <div class="rule-form">
+            <input id="rule-text" type="text" placeholder="e.g. Rent" aria-label="Recurring item text">
+            <input id="rule-time" type="text" value="09:00" placeholder="09:00" aria-label="Recurring item time">
+            <select id="rule-repeat" aria-label="Repeat">
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+            </select>
+            <input id="rule-detail" type="number" value="1" placeholder="day / weekday" aria-label="Day or weekday">
+            <button id="rule-add" class="secondary-btn" type="button">Add</button>
+          </div>
+        </div>
         <label class="toggle-row" for="cfg-autosave">
           <input id="cfg-autosave" type="checkbox" checked>
           <span>Automatically sync to GitHub</span>
@@ -137,6 +169,6 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./app.js?v=10"></script>
+  <script src="./app.js?v=11"></script>
 </body>
 </html>
