@@ -4,7 +4,13 @@
 
 ### Afspraken
 
-- 08:30 — ja
-- 09:00 — nee
-- 09:15 — misschien
+- 07:00 — Test
+- 08:00 — Test 2
+- 09:00 — Test 3
+
+## woensdag 18 november 2026
+
+### Afspraken
+
+- 06:30 — Test
 
