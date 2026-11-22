@@ -55,7 +55,7 @@ The folder name `notities` and the branch are configurable. Autosave waits until
 
 ## Windows app (7 days side by side)
 
-`windows/` contains a fullscreen Tkinter app in the same style: seven days next to each other, a 15-minute grid from 06:00 to 20:00 and a notes field per day. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins).
+`windows/` contains a fullscreen Tkinter app in the same style, laid out like an open Moleskine week: Monday–Wednesday on the left page, Thursday–Friday on the right page, and Saturday and Sunday stacked in the rightmost column. Each day has a 15-minute grid from 06:00 to 20:00 and a notes field. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins).
 
 1. In the Windows app, enter the same username, repository, branch, folder and token as on the iPhone (⚙).
 2. `windows/maak-exe.bat` builds `Notes.exe` (PyInstaller is installed automatically if needed).
