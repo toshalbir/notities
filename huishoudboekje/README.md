@@ -12,7 +12,7 @@ Deze map staat los van de bestaande `Notes · Agenda`-app in de hoofdmap — nie
 - **Lijst**: alle uitgaven van de maand, gegroepeerd per dag, bewerkbaar en verwijderbaar.
 - **Jaar**: twaalf maandkaarten met maandtotaal, jaartotaal, grootste maand en gemiddelde; klik op een maand om naar de kalender te gaan.
 - **Terugkerend**: vaste uitgaven zoals huishuur of een abonnement. Eén regel (bedrag, dag, categorie, vanaf/tot en notitie) maakt automatisch elke maand een uitgave. Wijzigen of verwijderen kan via de regel; al aangemaakte maanden blijven apart bewerkbaar.
-- **Print**: de knop rechtsboven printt het tabblad waarin je zit (kalender, lijst, categorieën, jaar of terugkerend).
+- **Print**: de knop rechtsboven printt het tabblad waarin je zit (kalender, lijst, categorieën, jaar of terugkerend). Op Windows kun je ook altijd `Ctrl+P` gebruiken.
 - **Offline-first**: alles staat eerst in de browser. Sync gebeurt op de achtergrond zodra er verbinding is.
 - **Automatische sync**: via Supabase, inclusief realtime updates tussen apparaten.
 
