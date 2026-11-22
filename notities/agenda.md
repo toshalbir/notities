@@ -10,6 +10,7 @@
 - 09:00 — nee
 - 09:15 — misschien
 - 09:30 — Gelukt
+- 09:45 — yes
 
 ## woensdag 18 november 2026
 
