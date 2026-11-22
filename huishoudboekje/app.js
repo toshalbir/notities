@@ -5,6 +5,10 @@
   const STORE_KEY = 'hb.v1.expenses';
   const CFG_KEY = 'hb.v1.settings';
   const SUPABASE_MODULE = 'https://esm.sh/@supabase/supabase-js@2.119.2';
+  const DEFAULT_CFG = {
+    url: 'https://dsrzgovpfknnziuvzdbg.supabase.co',
+    key: 'sb_publishable_b65BLKzwkB02scmuN1re2A_sTtsr48C'
+  };
 
   const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
   const WEEKDAYS = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
@@ -163,9 +167,12 @@ end $$;`;
   function loadCfg() {
     try {
       const raw = JSON.parse(localStorage.getItem(CFG_KEY) || '{}');
-      return { url: String(raw.url || '').trim(), key: String(raw.key || '').trim() };
+      return {
+        url: String(raw.url || DEFAULT_CFG.url).trim().replace(/\/$/, ''),
+        key: String(raw.key || DEFAULT_CFG.key).trim()
+      };
     } catch (_) {
-      return { url: '', key: '' };
+      return { ...DEFAULT_CFG };
     }
   }
 
