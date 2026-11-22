@@ -7,10 +7,10 @@
     last: 'notities.v1.lastDate'
   };
 
-  const WEEKDAYS = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag'];
-  const WEEKDAYS_SHORT = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
-  const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
-  const MONTHS_SHORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+  const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   const TIMES = [];
   const pad = (n) => String(n).padStart(2, '0');
@@ -66,7 +66,7 @@
     return Math.round((Date.UTC(year, date.getMonth(), date.getDate()) - Date.UTC(year, 0, 0)) / 86400000);
   }
 
-  /* ---------- Gegevens (met tijdstempels voor sync) ---------- */
+  /* ---------- Data (with timestamps for sync) ---------- */
 
   function normalizeField(value) {
     if (typeof value === 'string') return { text: value, ts: 0 };
@@ -147,7 +147,7 @@
       localStorage.setItem(KEYS.notes, JSON.stringify(notes));
       return true;
     } catch (_) {
-      showToast('Opslaan mislukt: browseropslag is vol', true);
+      showToast('Save failed: browser storage is full', true);
       return false;
     }
   }
@@ -194,7 +194,7 @@
       localStorage.setItem(KEYS.settings, JSON.stringify(value));
       return true;
     } catch (_) {
-      showToast('Instellingen konden niet worden opgeslagen', true);
+      showToast('Could not save settings', true);
       return false;
     }
   }
@@ -204,7 +204,7 @@
   let currentKey = localStorage.getItem(KEYS.last) || dateKey(new Date());
   if (!isValidKey(currentKey)) currentKey = dateKey(new Date());
 
-  /* ---------- Weergave ---------- */
+  /* ---------- Display ---------- */
 
   function updateSync(text, kind) {
     el.syncStatus.textContent = text;
@@ -212,9 +212,9 @@
   }
 
   function refreshSyncBase() {
-    if (!settings.autosave) updateSync('Lokaal opgeslagen');
-    else if (!settings.token || !settings.owner || !settings.repo) updateSync('Lokaal — vul GitHub-instellingen in');
-    else updateSync('Autosave aan', 'ok');
+    if (!settings.autosave) updateSync('Saved locally');
+    else if (!settings.token || !settings.owner || !settings.repo) updateSync('Local only — enter GitHub settings');
+    else updateSync('Autosave on', 'ok');
   }
 
   function applySettings() {
@@ -242,7 +242,7 @@
       input.type = 'text';
       input.className = `slot${isHour ? ' hour' : ''}`;
       input.dataset.time = time;
-      input.setAttribute('aria-label', `Afspraak om ${time}`);
+      input.setAttribute('aria-label', `Appointment at ${time}`);
       input.autocomplete = 'off';
       input.autocapitalize = 'sentences';
       input.spellcheck = true;
@@ -275,7 +275,7 @@
     autoGrowNotes();
   }
 
-  /* ---------- Lokaal opslaan ---------- */
+  /* ---------- Local saving ---------- */
 
   let localTimer = null;
 
@@ -307,7 +307,7 @@
     if (!isValidKey(key)) return;
     flushLocalSave();
     currentKey = key;
-    try { localStorage.setItem(KEYS.last, key); } catch (_) { /* niet kritiek */ }
+    try { localStorage.setItem(KEYS.last, key); } catch (_) { /* not critical */ }
     renderDay();
   }
 
@@ -336,19 +336,19 @@
 
   function buildMarkdown() {
     const keys = Object.keys(notes).filter((key) => isValidKey(key) && hasContent(notes[key])).sort().reverse();
-    const lines = ['# Notities', ''];
-    if (!keys.length) lines.push('_Nog geen notities._', '');
+    const lines = ['# Notes', ''];
+    if (!keys.length) lines.push('_No notes yet._', '');
     for (const key of keys) {
       const entry = normalizeEntry(notes[key]);
       const date = parseKey(key);
       lines.push(`## ${WEEKDAYS[date.getDay()]} ${longDate(date)}`, '');
       const times = Object.keys(entry.slots).filter((time) => entry.slots[time].text.trim()).sort();
       if (times.length) {
-        lines.push('### Afspraken', '');
+        lines.push('### Appointments', '');
         for (const time of times) lines.push(`- ${time} — ${entry.slots[time].text.replace(/\s+/g, ' ').trim()}`);
         lines.push('');
       }
-      if (entry.notes.text.trim()) lines.push('### Notities', '', entry.notes.text.trim(), '');
+      if (entry.notes.text.trim()) lines.push('### Notes', '', entry.notes.text.trim(), '');
     }
     return `${lines.join('\n')}\n`;
   }
@@ -373,8 +373,8 @@
     if (response.status === 404) return null;
     if (!response.ok) {
       let detail = '';
-      try { detail = (await response.json()).message || ''; } catch (_) { /* negeer */ }
-      throw new Error(`GitHub gaf status ${response.status}${detail ? `: ${detail}` : ''}`);
+      try { detail = (await response.json()).message || ''; } catch (_) { /* ignore */ }
+      throw new Error(`GitHub returned status ${response.status}${detail ? `: ${detail}` : ''}`);
     }
     const data = await response.json();
     return { sha: data.sha || null, text: fromBase64(data.content || '') };
@@ -382,7 +382,7 @@
 
   async function pushFile(cfg, filename, content, sha) {
     const payload = {
-      message: `Notities bijgewerkt — ${longDate(new Date())}`,
+      message: `Notes updated — ${longDate(new Date())}`,
       content: toBase64(content),
       branch: cfg.branch
     };
@@ -394,7 +394,7 @@
     });
     if (response.ok) return { ok: true, sha: (await response.json()).content?.sha || sha };
     let detail = '';
-    try { detail = (await response.json()).message || ''; } catch (_) { /* negeer */ }
+    try { detail = (await response.json()).message || ''; } catch (_) { /* ignore */ }
     return { ok: false, status: response.status, message: detail };
   }
 
@@ -409,23 +409,23 @@
     settings = loadSettings();
     if (silent && !settings.autosave) return;
     if (!settings.token || !settings.owner || !settings.repo) {
-      updateSync('Lokaal — vul GitHub-instellingen in');
+      updateSync('Local only — enter GitHub settings');
       if (!silent) {
         fillSettingsForm();
         openOverlay('settings-overlay');
-        showToast('Vul eerst GitHub-instellingen in', true);
+        showToast('Enter your GitHub settings first', true);
       }
       return;
     }
     if (!navigator.onLine) {
       offlinePending = true;
-      updateSync('Offline — sync wacht op verbinding', 'error');
+      updateSync('Offline — sync will resume when connected', 'error');
       return;
     }
     flushLocalSave();
     pushInFlight = true;
     el.exportBtn.disabled = true;
-    updateSync(silent ? 'Synchroniseren…' : 'Exporteren…');
+    updateSync(silent ? 'Syncing…' : 'Exporting…');
     try {
       const cfg = settings;
       const remote = await fetchFile(cfg, 'agenda.json');
@@ -457,7 +457,7 @@
           try {
             const parsed = JSON.parse(again.text);
             if (parsed && parsed.days) mergeRemoteDays(parsed.days);
-          } catch (_) { /* negeer */ }
+          } catch (_) { /* ignore */ }
           jsonSha = again.sha;
           result = await pushFile(cfg, 'agenda.json', JSON.stringify({
             schema: 1,
@@ -466,7 +466,7 @@
           }), jsonSha);
         }
       }
-      if (!result.ok) throw new Error(`Sync mislukt (${result.status})${result.message ? `: ${result.message}` : ''}`);
+      if (!result.ok) throw new Error(`Sync failed (${result.status})${result.message ? `: ${result.message}` : ''}`);
 
       let markdownRemote = await fetchFile(cfg, 'agenda.md');
       let mdResult = await pushFile(cfg, 'agenda.md', buildMarkdown(), markdownRemote ? markdownRemote.sha : null);
@@ -474,16 +474,16 @@
         markdownRemote = await fetchFile(cfg, 'agenda.md');
         mdResult = await pushFile(cfg, 'agenda.md', buildMarkdown(), markdownRemote ? markdownRemote.sha : null);
       }
-      if (!mdResult.ok) throw new Error(`Sync van agenda.md mislukt (${mdResult.status})`);
+      if (!mdResult.ok) throw new Error(`Sync of agenda.md failed (${mdResult.status})`);
 
       lastSyncedSignature = signature;
       offlinePending = false;
       const now = new Date();
-      updateSync(`Gesynchroniseerd ${pad(now.getHours())}:${pad(now.getMinutes())}`, 'ok');
-      if (!silent) showToast('Gesynchroniseerd met GitHub');
+      updateSync(`Synced ${pad(now.getHours())}:${pad(now.getMinutes())}`, 'ok');
+      if (!silent) showToast('Synced with GitHub');
     } catch (error) {
-      updateSync('Sync mislukt — tik op ⬆', 'error');
-      showToast(error && error.message ? error.message : 'Synchroniseren mislukt', true);
+      updateSync('Sync failed — tap ⬆', 'error');
+      showToast(error && error.message ? error.message : 'Sync failed', true);
     } finally {
       pushInFlight = false;
       el.exportBtn.disabled = false;
@@ -506,15 +506,15 @@
     const blob = new Blob([buildMarkdown()], { type: 'text/markdown;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `notities-${dateKey(new Date())}.md`;
+    link.download = `notes-${dateKey(new Date())}.md`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(link.href), 2000);
-    showToast('Bestand gedownload');
+    showToast('File downloaded');
   }
 
-  /* ---------- Zoeken ---------- */
+  /* ---------- Search ---------- */
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (char) => ({
@@ -537,7 +537,7 @@
   function makeSnippet(text, query) {
     const flat = String(text).replace(/\s+/g, ' ').trim();
     if (!query) return flat.length > 110 ? `${flat.slice(0, 110)}…` : flat;
-    const index = flat.toLocaleLowerCase('nl').indexOf(query);
+    const index = flat.toLocaleLowerCase('en').indexOf(query);
     if (index < 0) return flat.length > 110 ? `${flat.slice(0, 110)}…` : flat;
     const start = Math.max(0, index - 35);
     const end = Math.min(flat.length, index + query.length + 70);
@@ -546,7 +546,7 @@
 
   function renderSearch() {
     const rawQuery = el.searchInput.value.trim();
-    const query = rawQuery.toLocaleLowerCase('nl');
+    const query = rawQuery.toLocaleLowerCase('en');
     const days = Object.keys(notes)
       .filter((key) => isValidKey(key) && hasContent(notes[key]))
       .sort()
@@ -558,7 +558,7 @@
         for (const time of Object.keys(entry.slots).sort()) {
           if (entry.slots[time].text.trim()) parts.push({ label: time, text: entry.slots[time].text });
         }
-        if (entry.notes.text.trim()) parts.push({ label: 'Notities', text: entry.notes.text });
+        if (entry.notes.text.trim()) parts.push({ label: 'Notes', text: entry.notes.text });
         return { key, date, parts };
       });
 
@@ -567,25 +567,25 @@
       const haystack = [
         longDate(day.date), WEEKDAYS[day.date.getDay()], day.key,
         ...day.parts.map((part) => `${part.label} ${part.text}`)
-      ].join(' ').toLocaleLowerCase('nl');
+      ].join(' ').toLocaleLowerCase('en');
       return haystack.includes(query);
     });
 
     el.searchMeta.textContent = query
-      ? `${matches.length} ${matches.length === 1 ? 'resultaat' : 'resultaten'} voor “${rawQuery}”`
-      : `${matches.length} ${matches.length === 1 ? 'dag' : 'dagen'} met notities`;
+      ? `${matches.length} ${matches.length === 1 ? 'result' : 'results'} for “${rawQuery}”`
+      : `${matches.length} ${matches.length === 1 ? 'day' : 'days'} with notes`;
 
     el.searchResults.innerHTML = '';
     if (!matches.length) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
-      empty.textContent = query ? 'Geen notities gevonden. Probeer een ander woord.' : 'Nog geen notities geschreven.';
+      empty.textContent = query ? 'No notes found. Try another word.' : 'No notes written yet.';
       el.searchResults.appendChild(empty);
       return;
     }
 
     for (const day of matches.slice(0, 150)) {
-      const chosen = day.parts.find((part) => !query || `${part.label} ${part.text}`.toLocaleLowerCase('nl').includes(query)) || day.parts[0];
+      const chosen = day.parts.find((part) => !query || `${part.label} ${part.text}`.toLocaleLowerCase('en').includes(query)) || day.parts[0];
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'result';
@@ -602,7 +602,7 @@
     }
   }
 
-  /* ---------- Instellingen ---------- */
+  /* ---------- Settings ---------- */
 
   function formSettings() {
     return {
@@ -631,10 +631,10 @@
   async function testConnection() {
     const cfg = formSettings();
     el.connectionStatus.className = 'connection-status';
-    el.connectionStatus.textContent = 'Verbinden…';
+    el.connectionStatus.textContent = 'Connecting…';
     if (!cfg.owner || !cfg.repo || !cfg.token) {
       el.connectionStatus.className = 'connection-status error';
-      el.connectionStatus.textContent = 'Vul eigenaar, repository en token in.';
+      el.connectionStatus.textContent = 'Enter owner, repository and token.';
       return;
     }
     try {
@@ -644,14 +644,14 @@
       );
       if (!response.ok) {
         let detail = '';
-        try { detail = (await response.json()).message || ''; } catch (_) { /* negeer */ }
+        try { detail = (await response.json()).message || ''; } catch (_) { /* ignore */ }
         throw new Error(detail || `status ${response.status}`);
       }
       el.connectionStatus.className = 'connection-status ok';
-      el.connectionStatus.textContent = 'Verbinding OK — repository gevonden.';
+      el.connectionStatus.textContent = 'Connection OK — repository found.';
     } catch (error) {
       el.connectionStatus.className = 'connection-status error';
-      el.connectionStatus.textContent = `Geen verbinding: ${error.message || 'onbekende fout'}`;
+      el.connectionStatus.textContent = `No connection: ${error.message || 'unknown error'}`;
     }
   }
 
@@ -715,7 +715,7 @@
     if (persistSettings(settings)) {
       applySettings();
       closeOverlay('settings-overlay');
-      showToast('Instellingen opgeslagen');
+      showToast('Settings saved');
       if (!previous && settings.autosave) scheduleAutoPush();
     }
   });
@@ -749,7 +749,7 @@
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => { /* offline werkt zonder SW */ });
+      navigator.serviceWorker.register('./sw.js').catch(() => { /* offline works without SW */ });
     });
   }
 })();
