@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Boekje">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f4a3c">
+  <meta name="description" content="Uitgaven bijhouden met week-, maand- en categorietotalen. Automatisch sync tussen iPhone en Windows.">
+  <title>Huishoudboekje</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css?v=4">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">€</span><span>Huishoudboekje</span></div>
+      <button class="sync-pill" id="sync-pill" type="button" title="Nu synchroniseren">
+        <span class="dot" id="sync-dot"></span><span id="sync-text">Alleen lokaal</span>
+      </button>
+    </header>
+
+    <nav class="tabs" id="tabs" aria-label="Weergaven">
+      <button type="button" data-view="calendar" class="active">Kalender</button>
+      <button type="button" data-view="list">Lijst</button>
+      <button type="button" data-view="categories">Categorieën</button>
+      <button type="button" data-view="settings">Instellingen</button>
+    </nav>
+
+    <div class="month-bar" id="month-bar">
+      <button class="nav-btn" id="month-prev" type="button" aria-label="Vorige maand">‹</button>
+      <div class="month-title">
+        <h1 id="month-title">november 2026</h1>
+        <span id="month-sub">Maandtotaal € 0,00</span>
+      </div>
+      <button class="nav-btn" id="month-next" type="button" aria-label="Volgende maand">›</button>
+    </div>
+
+    <main>
+      <section class="view active" id="view-calendar" aria-label="Maandkalender">
+        <div class="calendar" id="calendar"></div>
+        <div class="summary-strip" id="summary-strip"></div>
+      </section>
+
+      <section class="view" id="view-list" aria-label="Alle uitgaven">
+        <div class="list-tools">
+          <label for="filter-category">Categorie</label>
+          <select id="filter-category"><option value="all">Alle categorieën</option></select>
+        </div>
+        <div id="expense-list" class="expense-list"></div>
+      </section>
+
+      <section class="view" id="view-categories" aria-label="Totalen per categorie">
+        <div id="category-bars" class="category-bars"></div>
+      </section>
+
+      <section class="view" id="view-settings" aria-label="Instellingen">
+        <div class="settings">
+          <h2>Synchroniseren</h2>
+          <p class="hint">Vul je Supabase-project in en log eenmalig in op elk apparaat. Daarna gaan uitgaven automatisch mee. Zonder sync werkt het boekje gewoon lokaal.</p>
+
+          <div class="form-row">
+            <label for="cfg-url">Project URL</label>
+            <input id="cfg-url" type="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://xxxx.supabase.co">
+          </div>
+          <div class="form-row">
+            <label for="cfg-key">Publishable key (of legacy anon key)</label>
+            <input id="cfg-key" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sb_publishable_… of eyJhbGciOi…">
+          </div>
+          <div class="form-row-pair">
+            <div class="form-row">
+              <label for="cfg-email">E-mail</label>
+              <input id="cfg-email" type="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="jij@voorbeeld.nl">
+            </div>
+            <div class="form-row">
+              <label for="cfg-password">Wachtwoord</label>
+              <input id="cfg-password" type="password" autocomplete="current-password" placeholder="••••••••">
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="primary-btn" id="btn-save-settings" type="button">Instellingen bewaren</button>
+            <button class="secondary-btn" id="btn-signin" type="button">Inloggen</button>
+            <button class="secondary-btn" id="btn-signup" type="button">Account maken</button>
+            <button class="secondary-btn" id="btn-sync-now" type="button">Sync nu</button>
+            <button class="secondary-btn" id="btn-show-sql" type="button">SQL bekijken</button>
+          </div>
+          <p class="status-line" id="auth-status" role="status"></p>
+
+          <details class="settings-details">
+            <summary>Eenmalige Supabase-instelling (SQL)</summary>
+            <p class="hint">Plak dit in de SQL Editor van je Supabase-project en klik op <strong>Run</strong>. Daarna pas loggen maar.</p>
+            <pre id="sql-snippet"></pre>
+            <button class="secondary-btn" id="btn-copy-sql" type="button">Kopieer SQL</button>
+          </details>
+
+          <details class="settings-details">
+            <summary>Backup &amp; gegevens</summary>
+            <div class="btn-row">
+              <button class="secondary-btn" id="btn-export" type="button">Download backup (JSON)</button>
+              <button class="secondary-btn" id="btn-import" type="button">Importeer backup</button>
+              <input id="import-file" type="file" accept="application/json,.json" hidden>
+            </div>
+            <p class="hint" id="data-count"></p>
+          </details>
+
+          <details class="settings-details">
+            <summary>Installeren op iPhone / Windows</summary>
+            <p class="hint">Op de iPhone: open deze pagina in Safari ▸ Deel ▸ <strong>Zet toe aan startscherm</strong>. Op Windows: open de site in Edge of Chrome ▸ <strong>Installeer app</strong>. Zet in beide Supabase URL, key en hetzelfde account, en de synchronisatie doet de rest.</p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <button class="fab" id="fab" type="button" aria-label="Nieuwe uitgave">+</button>
+  </div>
+
+  <div class="overlay" id="entry-overlay" hidden>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="entry-title">
+      <header class="sheet-head">
+        <h2 id="entry-title">Nieuwe uitgave</h2>
+        <button class="close-btn" type="button" data-close="entry-overlay" aria-label="Sluiten">✕</button>
+      </header>
+      <form id="entry-form" autocomplete="off">
+        <div class="amount-wrap">
+          <span class="currency">€</span>
+          <input id="entry-amount" type="text" inputmode="decimal" enterkeyhint="done" placeholder="0,00" aria-label="Bedrag in euro's" required>
+        </div>
+        <fieldset class="category-picker">
+          <legend>Categorie</legend>
+          <div class="chips" id="entry-chips"></div>
+        </fieldset>
+        <div class="form-row-pair">
+          <div class="form-row">
+            <label for="entry-date">Datum</label>
+            <input id="entry-date" type="date" required>
+          </div>
+          <div class="form-row">
+            <label for="entry-note">Notitie (optioneel)</label>
+            <input id="entry-note" type="text" placeholder="bijv. Albert Heijn" maxlength="80">
+          </div>
+        </div>
+        <div class="sheet-actions">
+          <button class="danger-btn" id="btn-delete" type="button" hidden>Verwijderen</button>
+          <span class="grow"></span>
+          <button class="primary-btn" type="submit">Bewaren</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="overlay" id="day-overlay" hidden>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="day-title">
+      <header class="sheet-head">
+        <h2 id="day-title">Dag</h2>
+        <button class="close-btn" type="button" data-close="day-overlay" aria-label="Sluiten">✕</button>
+      </header>
+      <div id="day-entries" class="day-entries"></div>
+      <button class="primary-btn wide" id="btn-add-for-day" type="button">+ Uitgave op deze dag</button>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js?v=5"></script>
+</body>
+</html>
