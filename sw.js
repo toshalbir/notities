@@ -1,4 +1,4 @@
-const CACHE_NAME = 'notities-shell-v2';
+const CACHE_NAME = 'notities-shell-v4';
 
 const APP_SHELL = [
   './',
@@ -6,8 +6,6 @@ const APP_SHELL = [
   './styles.css',
   './app.js',
   './manifest.json',
-  './fonts/caveat-latin.woff2',
-  './fonts/caveat-latin-ext.woff2',
   './fonts/patrick-hand-latin.woff2',
   './fonts/patrick-hand-latin-ext.woff2',
   './icons/icon-192.png',

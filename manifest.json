@@ -1,15 +1,15 @@
 {
-  "name": "Notities · Dagboek",
+  "name": "Notities · Agenda",
   "short_name": "Notities",
-  "description": "Een professioneel papieren dagboek voor je iPhone: één pagina per dag, doorzoekbaar en exporteerbaar naar GitHub.",
+  "description": "Dagelijkse agenda met tijdvakken en notities, automatisch opgeslagen naar GitHub.",
   "lang": "nl",
   "dir": "ltr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#2f241e",
-  "theme_color": "#2f241e",
+  "background_color": "#f6f5f2",
+  "theme_color": "#f6f5f2",
   "icons": [
     {
       "src": "./icons/icon-192.png",
