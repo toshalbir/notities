@@ -1,10 +1,11 @@
-const CACHE_NAME = 'notities-shell-v7';
+const CACHE_NAME = 'notities-shell-v9';
 
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './app.js?v=9',
   './manifest.json',
   './fonts/patrick-hand-latin.woff2',
   './fonts/patrick-hand-latin-ext.woff2',
