@@ -5,6 +5,7 @@
 ### Appointments
 
 - 09:00 — ok
+- 11:30 — Test
 
 ## Saturday 21 November 2026
 
