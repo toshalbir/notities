@@ -8,7 +8,7 @@ Een lichte, strakke dagagenda voor je iPhone: één pagina per dag met tijdvakke
 - Losse notities onderaan de pagina, met schrijflijnen.
 - Handgeschreven lettertype (Patrick Hand) of gewoon systeemlettertype — om te zetten in ⚙ Instellingen.
 - Zoeken op tekst, tijd of datum; tik op een resultaat om naar die dag te gaan.
-- **Autosave naar GitHub**: ~5 seconden nadat je stopt met typen wordt `notities/agenda.md` bijgewerkt. Onderaan zie je de sync-status.
+- **Autosave naar GitHub**: ~5 seconden nadat je stopt met typen wordt `notities/agenda.json` bijgewerkt (en `agenda.md` als leesbare kopie). Onderaan zie je de sync-status. De app haalt ook elke minuut wijzigingen van de Windows-app op.
 - Handmatig exporteren kan ook met de ⬆-knop; ⬇ downloadt een `.md`-bestand zonder token.
 - Alles staat ook lokaal op je apparaat. De app is een PWA en werkt offline (alleen sync heeft internet nodig).
 
@@ -36,7 +36,7 @@ Autosave staat standaard aan; je kunt hem in dezelfde instellingen uitzetten. He
 
 ### Wat er naar GitHub gaat
 
-Eén bestand: `notities/agenda.md`, met per dag de afspraken en losse notities:
+Eén bestand is leidend voor de synchronisatie: `notities/agenda.json`. Daarnaast schrijft de app `notities/agenda.md` als leesbare kopie, met per dag de afspraken en losse notities:
 
 ```markdown
 # Notities
@@ -53,6 +53,16 @@ Vandaag het prototype afgemaakt.
 
 De mapnaam `notities` en de branch zijn instelbaar. Autosave wacht tot je stopt met typen zodat GitHub niet bij elke toetsaanslag een commit krijgt.
 
+## Windows-app (7 dagen naast elkaar)
+
+In `windows/` staat een schermvullende Tkinter-app met dezelfde stijl: zeven dagen naast elkaar, kwartierraster van 06:00–20:00 en een notitieveld per dag. Hij gebruikt dezelfde GitHub-instellingen en hetzelfde `agenda.json`, dus wijzigingen van iPhone en Windows worden per veld samengevoegd (nieuwste tijdstempel wint).
+
+1. Vul in de Windows-app op ⚙ dezelfde gebruikersnaam, repository, branch, map en token in als op de iPhone.
+2. `windows/maak-exe.bat` bouwt `Notities.exe` (PyInstaller wordt zo nodig automatisch geïnstalleerd).
+3. Escape haalt de app even uit fullscreen; de ↻-knop synchroniseert direct.
+
+De iPhone-app moet wel de nieuwste `app.js` gebruiken: oude versies schrijven alleen `agenda.md` en lezen nooit van GitHub. Controleer na een upload dat de app op de iPhone opnieuw is geopend (service worker-cache vernieuwen).
+
 ## Lokaal proberen
 
 ```powershell
@@ -67,11 +77,14 @@ Open daarna `http://localhost:8000`.
 | --- | --- |
 | `index.html` | Structuur van de agenda |
 | `styles.css` | Lichte Moleskine-achtige vormgeving |
-| `app.js` | Opslag, tijdgrid, zoeken, autosave en export |
+| `app.js` | Opslag, tijdgrid, zoeken, tweeweg-sync en export |
 | `manifest.json` / `sw.js` | PWA en offline caching |
 | `fonts/` | Patrick Hand + licentie (SIL OFL 1.1) |
 | `icons/` | App-iconen |
 | `tools/make_icons.py` | Optioneel: iconen opnieuw genereren |
+| `windows/notities.py` | Schermvullende Windows-app met 7 dagen |
+| `windows/notities_core.py` | Gedeelde sync-logica (JSON met tijdstempels) |
+| `windows/maak-exe.bat` | Bouwt `Notities.exe` |
 
 ## Privacy
 
