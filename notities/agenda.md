@@ -5,6 +5,7 @@
 ### Afspraken
 
 - 08:00 — Magazijn
+- 11:00 — Peeters
 
 ### Notities
 
