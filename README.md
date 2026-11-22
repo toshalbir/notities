@@ -1,10 +1,10 @@
 # Notities · Agenda
 
-Een lichte, strakke dagagenda voor je iPhone: één pagina per dag met tijdvakken van 08:00 tot 20:00, een apart vel voor losse notities, en automatische opslag naar GitHub.
+Een lichte, strakke dagagenda voor je iPhone: één pagina per dag met tijdvakken van 06:00 tot 20:00 per kwartier, een apart vel voor losse notities, en automatische opslag naar GitHub.
 
 ## Wat zit erin
 
-- Tijdgrid met halve uren (8:00, 8:30, 9:00, …), zoals een Moleskine-dagagenda. Tik op een tijd om daar te typen.
+- Tijdgrid per kwartier (6:00, 6:15, 6:30, …), zoals een Moleskine-dagagenda. Tik op een tijd om daar te typen.
 - Losse notities onderaan de pagina, met schrijflijnen.
 - Handgeschreven lettertype (Patrick Hand) of gewoon systeemlettertype — om te zetten in ⚙ Instellingen.
 - Zoeken op tekst, tijd of datum; tik op een resultaat om naar die dag te gaan.
@@ -20,6 +20,8 @@ Een lichte, strakke dagagenda voor je iPhone: één pagina per dag met tijdvakke
 4. Open `https://<jouw-naam>.github.io/notities/` in Safari en kies **Deel ▸ Toevoegen aan startscherm**.
 
 `<jouw-naam>` vervang je door je echte GitHub-gebruikersnaam. Eigenaar en repository worden verder automatisch uit de URL herkend.
+
+Open de app daarna **via het icoon op je startscherm**: dan draait hij in volledig scherm zonder adresbalk. In Safari zelf blijft de browserbalk zichtbaar — dat kan een webpagina niet uitzetten.
 
 ## Token instellen
 

@@ -14,9 +14,8 @@
 
   const TIMES = [];
   const pad = (n) => String(n).padStart(2, '0');
-  for (let hour = 8; hour <= 20; hour += 1) {
-    TIMES.push(`${pad(hour)}:00`);
-    if (hour < 20) TIMES.push(`${pad(hour)}:30`);
+  for (let minutes = 6 * 60; minutes <= 20 * 60; minutes += 15) {
+    TIMES.push(`${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`);
   }
 
   const $ = (id) => document.getElementById(id);
@@ -25,7 +24,6 @@
     dateShort: $('date-short'),
     pageDate: $('page-date'),
     pageNum: $('page-num'),
-    weekNum: $('week-num'),
     timeCol: $('time-col'),
     slotCol: $('slot-col'),
     notesInput: $('notes-input'),
@@ -66,18 +64,6 @@
   function dayOfYear(date) {
     const year = date.getFullYear();
     return Math.round((Date.UTC(year, date.getMonth(), date.getDate()) - Date.UTC(year, 0, 0)) / 86400000);
-  }
-
-  function daysInYear(year) {
-    return ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) ? 366 : 365;
-  }
-
-  function isoWeek(date) {
-    const day = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const weekday = day.getUTCDay() || 7;
-    day.setUTCDate(day.getUTCDate() + 4 - weekday);
-    const yearStart = new Date(Date.UTC(day.getUTCFullYear(), 0, 1));
-    return Math.ceil(((day - yearStart) / 86400000 + 1) / 7);
   }
 
   /* ---------- Gegevens ---------- */
@@ -251,8 +237,7 @@
     el.datePicker.value = currentKey;
     el.dateShort.textContent = shortDate(date);
     el.pageDate.textContent = `${WEEKDAYS[date.getDay()]} ${longDate(date)}`;
-    el.pageNum.textContent = `Pagina ${dayOfYear(date)} / ${daysInYear(date.getFullYear())}`;
-    el.weekNum.textContent = `Week ${isoWeek(date)}`;
+    el.pageNum.textContent = String(dayOfYear(date));
     for (const time of TIMES) slotInputs[time].value = entry.slots[time] || '';
     el.notesInput.value = entry.notes || '';
     autoGrowNotes();
