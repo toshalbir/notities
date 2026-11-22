@@ -1,12 +1,12 @@
 // Huishoudboekje service worker — app shell offline, CDN modules cached separately.
-const CACHE = 'hb-v6';
+const CACHE = 'hb-v7';
 const CDN_CACHE = 'hb-v1-cdn';
 
 const SHELL = [
   './',
   './index.html',
-  './styles.css?v=4',
-  './app.js?v=6',
+  './styles.css?v=5',
+  './app.js?v=7',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
