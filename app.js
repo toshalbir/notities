@@ -4,7 +4,9 @@
   const KEYS = {
     notes: 'notities.v1.notes',
     settings: 'notities.v1.settings',
-    last: 'notities.v1.lastDate'
+    templates: 'notities.v1.templates',
+    last: 'notities.v1.lastDate',
+    backup: 'notities.v1.lastBackup'
   };
 
   const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -26,16 +28,29 @@
     pageNum: $('page-num'),
     timeCol: $('time-col'),
     slotCol: $('slot-col'),
+    doneCol: $('done-col'),
+    nowLine: $('now-line'),
+    lastWeek: $('last-week'),
     notesInput: $('notes-input'),
     searchInput: $('search-input'),
     searchMeta: $('search-meta'),
     searchResults: $('search-results'),
+    tagChips: $('tag-chips'),
     connectionStatus: $('connection-status'),
     syncStatus: $('sync-status'),
     toast: $('toast'),
-    exportBtn: $('export-github')
+    exportBtn: $('export-github'),
+    copyBtn: $('copy-day'),
+    ruleList: $('rule-list'),
+    ruleText: $('rule-text'),
+    ruleTime: $('rule-time'),
+    ruleRepeat: $('rule-repeat'),
+    ruleDetail: $('rule-detail'),
+    ruleAdd: $('rule-add')
   };
   const slotInputs = {};
+  const doneButtons = {};
+  const INK_COLORS = { blue: '#2f3b46', black: '#262626', gray: '#5d5a52' };
 
   /* ---------- Datum ---------- */
 
@@ -66,14 +81,25 @@
     return Math.round((Date.UTC(year, date.getMonth(), date.getDate()) - Date.UTC(year, 0, 0)) / 86400000);
   }
 
+  function shiftDate(date, amount) {
+    const copy = new Date(date.getTime());
+    copy.setDate(copy.getDate() + amount);
+    return copy;
+  }
+
+  function lastDayOfMonth(date) {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  }
+
   /* ---------- Data (with timestamps for sync) ---------- */
 
   function normalizeField(value) {
-    if (typeof value === 'string') return { text: value, ts: 0 };
+    if (typeof value === 'string') return { text: value, ts: 0, done: false };
     const obj = (value && typeof value === 'object') ? value : {};
     return {
       text: typeof obj.text === 'string' ? obj.text : '',
-      ts: Number(obj.ts) || 0
+      ts: Number(obj.ts) || 0,
+      done: Boolean(obj.done)
     };
   }
 
@@ -86,8 +112,19 @@
     return `${pad(Math.floor(bucket / 60))}:${pad(bucket % 60)}`;
   }
 
+  function normalizeHidden(value) {
+    const result = {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+    for (const [key, stamp] of Object.entries(value)) {
+      const id = String(key).trim();
+      if (id && Number.isFinite(Number(stamp))) result[id] = Number(stamp);
+    }
+    return result;
+  }
+
   function normalizeEntry(value) {
-    if (typeof value === 'string') return { notes: { text: value, ts: 0 }, slots: {} };
+    if (typeof value === 'string') return { notes: normalizeField(value), slots: {}, hidden: {} };
+
     const obj = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
     const slots = {};
     if (obj.slots && typeof obj.slots === 'object') {
@@ -99,13 +136,74 @@
         if (!current || incoming.ts > current.ts) slots[bucket] = incoming;
       }
     }
-    return { notes: normalizeField(obj.notes), slots };
+    return { notes: normalizeField(obj.notes), slots, hidden: normalizeHidden(obj.hidden) };
+  }
+
+  function normalizeTemplate(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const id = String(value.id || '').trim();
+    const text = String(value.text || '').trim();
+    if (!id || !text) return null;
+    const day = Number(value.day);
+    return {
+      id,
+      text,
+      time: slotBucket(value.time) || '09:00',
+      repeat: value.repeat === 'weekly' ? 'weekly' : 'monthly',
+      weekday: ((Number(value.weekday) || 0) % 7 + 7) % 7,
+      day: Number.isFinite(day) ? (day === -1 ? -1 : Math.min(31, Math.max(1, Math.round(day)))) : 1,
+      ts: Number(value.ts) || 0,
+      deleted: Boolean(value.deleted)
+    };
+  }
+
+  function normalizeTemplates(value) {
+    const result = {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+    for (const raw of Object.values(value)) {
+      const item = normalizeTemplate(raw);
+      if (item) result[item.id] = item;
+    }
+    return result;
+  }
+
+  function mergeRemoteTemplates(remote) {
+    let changed = false;
+    for (const raw of Object.values(remote || {})) {
+      const item = normalizeTemplate(raw);
+      if (!item) continue;
+      const current = templates[item.id];
+      if (!current || item.ts > current.ts) {
+        templates[item.id] = item;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function occurrencesForDay(date, time) {
+    const last = lastDayOfMonth(date);
+    return Object.values(templates)
+      .filter((item) => {
+        if (item.deleted) return false;
+        if (time && item.time !== time) return false;
+        if (item.repeat === 'weekly') return date.getDay() === ((item.weekday + 1) % 7);
+        const target = item.day === -1 ? last : Math.min(item.day, last);
+        return date.getDate() === target;
+      })
+      .sort((a, b) => a.time.localeCompare(b.time) || a.text.localeCompare(b.text));
+  }
+
+  function visibleOccurrences(date, time) {
+    const hidden = normalizeEntry(notes[dateKey(date)] || {}).hidden;
+    return occurrencesForDay(date, time).filter((item) => !hidden[item.id]);
   }
 
   function hasContent(entry) {
     const clean = normalizeEntry(entry);
     return Boolean(clean.notes.text.trim()) ||
-      Object.values(clean.slots).some((field) => Boolean(field.text.trim()));
+      Object.keys(clean.hidden).length > 0 ||
+      Object.values(clean.slots).some((field) => Boolean(field.text.trim()) || field.done);
   }
 
   function notesSignature() {
@@ -116,7 +214,9 @@
       for (const time of Object.keys(entry.slots).sort()) slots[time] = entry.slots[time];
       sorted[key] = { notes: entry.notes, slots };
     }
-    return JSON.stringify(sorted);
+    const rules = {};
+    for (const id of Object.keys(templates).sort()) rules[id] = templates[id];
+    return JSON.stringify({ days: sorted, templates: rules });
   }
 
   function mergeRemoteDays(remoteDays) {
@@ -129,6 +229,9 @@
       if (remote.notes.ts > local.notes.ts) local.notes = remote.notes;
       for (const [time, field] of Object.entries(remote.slots)) {
         if (!local.slots[time] || field.ts > local.slots[time].ts) local.slots[time] = field;
+      }
+      for (const [id, stamp] of Object.entries(remote.hidden)) {
+        if ((local.hidden[id] || -1) < stamp) local.hidden[id] = stamp;
       }
       if (!notes[key] || JSON.stringify(local) !== JSON.stringify(normalizeEntry(notes[key]))) changed = true;
       notes[key] = local;
@@ -148,7 +251,7 @@
       for (const [key, value] of Object.entries(raw)) {
         if (isValidKey(key)) {
           const entry = normalizeEntry(value);
-          if (Object.keys(entry.slots).length || entry.notes.text) result[key] = entry;
+          if (hasContent(entry)) result[key] = entry;
         }
       }
     }
@@ -165,8 +268,26 @@
     }
   }
 
+  function loadTemplates() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(KEYS.templates) || '{}');
+      return normalizeTemplates(raw);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function persistTemplates() {
+    try {
+      localStorage.setItem(KEYS.templates, JSON.stringify(templates));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function getEntry(key, create) {
-    if (!notes[key] && !create) return { notes: { text: '', ts: 0 }, slots: {} };
+    if (!notes[key] && !create) return { notes: { text: '', ts: 0, done: false }, slots: {} };
     if (!notes[key]) notes[key] = { notes: { text: '', ts: 0 }, slots: {} };
     notes[key] = normalizeEntry(notes[key]);
     return notes[key];
@@ -188,7 +309,8 @@
       path: 'notities',
       token: '',
       autosave: true,
-      font: 'hand'
+      font: 'hand',
+      ink: 'blue'
     };
   }
 
@@ -214,6 +336,8 @@
 
   let notes = loadNotes();
   persistNotes(); // fold any old 15-minute keys into the half-hour grid
+  let templates = loadTemplates();
+  persistTemplates();
   let settings = loadSettings();
   let currentKey = localStorage.getItem(KEYS.last) || dateKey(new Date());
   if (!isValidKey(currentKey)) currentKey = dateKey(new Date());
@@ -233,7 +357,12 @@
 
   function applySettings() {
     document.body.dataset.font = settings.font === 'system' ? 'system' : 'hand';
+    document.documentElement.style.setProperty('--ink', INK_COLORS[settings.ink] || INK_COLORS.blue);
     refreshSyncBase();
+  }
+
+  function haptic() {
+    if (navigator.vibrate) navigator.vibrate(12);
   }
 
   function showToast(message, isError = false) {
@@ -262,14 +391,48 @@
       input.spellcheck = true;
       input.addEventListener('input', () => {
         const entry = getEntry(currentKey, true);
-        entry.slots[time] = { text: input.value, ts: Date.now() };
+        const old = entry.slots[time] || {};
+        entry.slots[time] = { text: input.value, ts: Date.now(), done: Boolean(old.done) };
+        input.classList.toggle('done', Boolean(old.done) && !input.value.trim());
         scheduleLocalSave();
         scheduleAutoPush();
+        haptic();
       });
       label.addEventListener('click', () => input.focus());
+
+      const done = document.createElement('button');
+      done.type = 'button';
+      done.className = 'done-btn';
+      done.textContent = '○';
+      done.setAttribute('aria-label', `Toggle done for ${time}`);
+      done.addEventListener('click', () => toggleDone(time));
+      doneButtons[time] = done;
+      el.doneCol.appendChild(done);
+
       slotInputs[time] = input;
       el.slotCol.appendChild(input);
     }
+  }
+
+  function toggleDone(time) {
+    flushLocalSave();
+    const entry = getEntry(currentKey, true);
+    const field = entry.slots[time] || { text: '', ts: 0, done: false };
+    field.done = !field.done;
+    field.ts = Date.now();
+    if (!field.text.trim()) {
+      const recurring = visibleOccurrences(parseKey(currentKey), time);
+      if (recurring.length) field.text = recurring[0].text;
+    }
+    entry.slots[time] = field;
+    slotInputs[time].value = field.text;
+    slotInputs[time].placeholder = '';
+    doneButtons[time].textContent = field.done ? '✓' : '○';
+    doneButtons[time].classList.toggle('on', field.done);
+    slotInputs[time].classList.toggle('done', field.done);
+    haptic();
+    flushLocalSave();
+    scheduleAutoPush();
   }
 
   function autoGrowNotes() {
@@ -284,9 +447,49 @@
     el.dateShort.textContent = shortDate(date);
     el.pageDate.textContent = `${WEEKDAYS[date.getDay()]} ${longDate(date)}`;
     el.pageNum.textContent = String(dayOfYear(date));
-    for (const time of TIMES) slotInputs[time].value = (entry.slots[time] || {}).text || '';
+
+    for (const time of TIMES) {
+      const field = entry.slots[time] || { text: '', done: false };
+      const input = slotInputs[time];
+      input.value = field.text || '';
+      input.placeholder = field.text.trim()
+        ? ''
+        : visibleOccurrences(date, time).map((item) => item.text).join(' · ');
+      input.classList.toggle('done', Boolean(field.done));
+      doneButtons[time].textContent = field.done ? '✓' : '○';
+      doneButtons[time].classList.toggle('on', Boolean(field.done));
+    }
+
+    const previous = [];
+    const previousDay = shiftDate(date, -7);
+    const previousEntry = notes[dateKey(previousDay)];
+    if (previousEntry) {
+      for (const [time, field] of Object.entries(previousEntry.slots || {})) {
+        if (field.text && field.text.trim()) previous.push([time, field.text.trim()]);
+      }
+    }
+    for (const item of visibleOccurrences(previousDay)) previous.push([item.time, item.text]);
+    previous.sort((a, b) => a[0].localeCompare(b[0]));
+    el.lastWeek.textContent = previous.length
+      ? `Last week · ${previous.slice(0, 3).map(([time, text]) => `${time} ${text}`).join(' · ')}`
+      : '';
+
     el.notesInput.value = entry.notes.text || '';
     autoGrowNotes();
+    updateNowLine();
+  }
+
+  function updateNowLine() {
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    if (minutes < 6 * 60 || minutes > 20 * 60) {
+      el.nowLine.style.display = 'none';
+      return;
+    }
+    const rowHeight = 40;
+    const top = (minutes - 6 * 60) * (rowHeight / 30);
+    el.nowLine.style.display = 'block';
+    el.nowLine.style.top = `${top}px`;
   }
 
   /* ---------- Local saving ---------- */
@@ -296,7 +499,7 @@
   function tidyNotes() {
     for (const key of Object.keys(notes)) {
       const entry = normalizeEntry(notes[key]);
-      if (Object.keys(entry.slots).length || entry.notes.text) notes[key] = entry;
+      if (hasContent(entry)) notes[key] = entry;
       else delete notes[key];
     }
   }
@@ -351,6 +554,17 @@
   function buildMarkdown() {
     const keys = Object.keys(notes).filter((key) => isValidKey(key) && hasContent(notes[key])).sort().reverse();
     const lines = ['# Notes', ''];
+    const active = Object.values(templates).filter((item) => !item.deleted);
+    if (active.length) {
+      lines.push('## Recurring', '');
+      for (const item of active.sort((a, b) => a.repeat.localeCompare(b.repeat) || a.time.localeCompare(b.time))) {
+        const when = item.repeat === 'weekly'
+          ? `${WEEKDAYS[item.weekday]} ${item.time}`
+          : `day ${item.day === -1 ? 'last' : item.day} ${item.time}`;
+        lines.push(`- ${when} — ${item.text}`);
+      }
+      lines.push('');
+    }
     if (!keys.length) lines.push('_No notes yet._', '');
     for (const key of keys) {
       const entry = normalizeEntry(notes[key]);
@@ -359,7 +573,10 @@
       const times = Object.keys(entry.slots).filter((time) => entry.slots[time].text.trim()).sort();
       if (times.length) {
         lines.push('### Appointments', '');
-        for (const time of times) lines.push(`- ${time} — ${entry.slots[time].text.replace(/\s+/g, ' ').trim()}`);
+        for (const time of times) {
+          const field = entry.slots[time];
+          lines.push(`- ${time} — ${field.done ? '✓ ' : ''}${field.text.replace(/\s+/g, ' ').trim()}`);
+        }
         lines.push('');
       }
       if (entry.notes.text.trim()) lines.push('### Notes', '', entry.notes.text.trim(), '');
@@ -377,7 +594,25 @@
 
   function contentsUrl(cfg, filename) {
     const base = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/`;
-    return base + [cfg.path, filename].filter(Boolean).map(encodeURIComponent).join('/');
+    const parts = [cfg.path, ...String(filename).split('/')].filter(Boolean);
+    return base + parts.map(encodeURIComponent).join('/');
+  }
+
+  async function backupIfNeeded(cfg) {
+    const month = new Date().toISOString().slice(0, 7);
+    if (localStorage.getItem(KEYS.backup) === month) return;
+    try {
+      const existing = await fetchFile(cfg, `backups/${month}.json`);
+      if (!existing) {
+        await pushFile(cfg, `backups/${month}.json`, JSON.stringify({
+          schema: 1,
+          updated: new Date().toISOString(),
+          days: notes,
+          templates
+        }), null);
+      }
+      localStorage.setItem(KEYS.backup, month);
+    } catch (_) { /* backups are best-effort */ }
   }
 
   async function fetchFile(cfg, filename) {
@@ -447,14 +682,16 @@
         try {
           const parsed = JSON.parse(remote.text);
           if (parsed && parsed.days && typeof parsed.days === 'object') mergeRemoteDays(parsed.days);
+          if (parsed && parsed.templates) mergeRemoteTemplates(parsed.templates);
         } catch (_) { /* onleesbaar bestand: lokale data bewaren */ }
       }
       persistNotes();
+      persistTemplates();
       renderDay();
 
       const signature = notesSignature();
       if (signature === lastSyncedSignature && remote) {
-        updateSync('Alles gesynchroniseerd', 'ok');
+        updateSync('All synced', 'ok');
         return;
       }
 
@@ -462,7 +699,8 @@
       let result = await pushFile(cfg, 'agenda.json', JSON.stringify({
         schema: 1,
         updated: new Date().toISOString(),
-        days: notes
+        days: notes,
+        templates
       }), jsonSha);
 
       if (!result.ok && result.status === 409) {
@@ -471,12 +709,14 @@
           try {
             const parsed = JSON.parse(again.text);
             if (parsed && parsed.days) mergeRemoteDays(parsed.days);
+            if (parsed && parsed.templates) mergeRemoteTemplates(parsed.templates);
           } catch (_) { /* ignore */ }
           jsonSha = again.sha;
           result = await pushFile(cfg, 'agenda.json', JSON.stringify({
             schema: 1,
             updated: new Date().toISOString(),
-            days: notes
+            days: notes,
+            templates
           }), jsonSha);
         }
       }
@@ -490,6 +730,7 @@
       }
       if (!mdResult.ok) throw new Error(`Sync of agenda.md failed (${mdResult.status})`);
 
+      await backupIfNeeded(cfg);
       lastSyncedSignature = signature;
       offlinePending = false;
       const now = new Date();
@@ -528,6 +769,28 @@
     showToast('File downloaded');
   }
 
+  async function copyCurrentDay() {
+    flushLocalSave();
+    const date = parseKey(currentKey);
+    const entry = getEntry(currentKey, false);
+    const lines = [`${WEEKDAYS[date.getDay()]} ${longDate(date)}`, ''];
+    for (const time of Object.keys(entry.slots).sort()) {
+      const field = entry.slots[time];
+      if (field.text && field.text.trim()) {
+        lines.push(`- ${time} — ${field.done ? '✓ ' : ''}${field.text.trim()}`);
+      }
+    }
+    for (const item of visibleOccurrences(date)) lines.push(`- ${item.time} — ${item.text} (recurring)`);
+    if (entry.notes.text.trim()) lines.push('', entry.notes.text.trim());
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      showToast('Day copied to clipboard');
+      haptic();
+    } catch (_) {
+      showToast('Clipboard not available here', true);
+    }
+  }
+
   /* ---------- Search ---------- */
 
   function escapeHtml(value) {
@@ -558,7 +821,36 @@
     return `${start > 0 ? '…' : ''}${flat.slice(start, end)}${end < flat.length ? '…' : ''}`;
   }
 
+  let activeTag = '';
+
+  function collectTags() {
+    const found = new Set();
+    for (const entry of Object.values(notes)) {
+      const texts = [entry.notes.text, ...Object.values(entry.slots || {}).map((field) => field.text)];
+      for (const text of texts) {
+        for (const match of String(text || '').matchAll(/#[\p{L}\p{N}_-]+/gu)) found.add(match[0].toLowerCase());
+      }
+    }
+    return [...found].sort();
+  }
+
+  function renderTagChips() {
+    el.tagChips.innerHTML = '';
+    for (const tag of collectTags()) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = `tag-chip${activeTag === tag ? ' active' : ''}`;
+      chip.textContent = tag;
+      chip.addEventListener('click', () => {
+        activeTag = activeTag === tag ? '' : tag;
+        renderSearch();
+      });
+      el.tagChips.appendChild(chip);
+    }
+  }
+
   function renderSearch() {
+    renderTagChips();
     const rawQuery = el.searchInput.value.trim();
     const query = rawQuery.toLocaleLowerCase('en');
     const days = Object.keys(notes)
@@ -577,6 +869,10 @@
       });
 
     const matches = days.filter((day) => {
+      if (activeTag) {
+        const all = day.parts.map((part) => part.text).join(' ').toLocaleLowerCase('en');
+        if (!all.includes(activeTag)) return false;
+      }
       if (!query) return true;
       const haystack = [
         longDate(day.date), WEEKDAYS[day.date.getDay()], day.key,
@@ -626,7 +922,8 @@
       path: $('cfg-path').value.trim().replace(/^\/+|\/+$/g, '') || 'notities',
       token: $('cfg-token').value.trim(),
       autosave: $('cfg-autosave').checked,
-      font: $('cfg-font').value === 'system' ? 'system' : 'hand'
+      font: $('cfg-font').value === 'system' ? 'system' : 'hand',
+      ink: $('cfg-ink').value
     };
   }
 
@@ -638,8 +935,76 @@
     $('cfg-token').value = settings.token || '';
     $('cfg-autosave').checked = settings.autosave !== false;
     $('cfg-font').value = settings.font === 'system' ? 'system' : 'hand';
+    $('cfg-ink').value = INK_COLORS[settings.ink] ? settings.ink : 'blue';
     el.connectionStatus.textContent = '';
     el.connectionStatus.className = 'connection-status';
+    renderRules();
+  }
+
+  function renderRules() {
+    el.ruleList.innerHTML = '';
+    const active = Object.values(templates).filter((item) => !item.deleted)
+      .sort((a, b) => a.repeat.localeCompare(b.repeat) || a.time.localeCompare(b.time));
+    if (!active.length) {
+      const empty = document.createElement('div');
+      empty.className = 'rule-item';
+      empty.textContent = 'No recurring items yet.';
+      el.ruleList.appendChild(empty);
+      return;
+    }
+    for (const item of active) {
+      const row = document.createElement('div');
+      row.className = 'rule-item';
+      const when = item.repeat === 'weekly'
+        ? `${WEEKDAYS[item.weekday]} ${item.time}`
+        : `day ${item.day === -1 ? 'last' : item.day} ${item.time}`;
+      const label = document.createElement('span');
+      label.textContent = `${item.text} · ${when}`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '✕';
+      remove.setAttribute('aria-label', `Remove ${item.text}`);
+      remove.addEventListener('click', () => {
+        templates[item.id] = { ...item, deleted: true, ts: Date.now() };
+        persistTemplates();
+        renderRules();
+        renderDay();
+        scheduleAutoPush();
+        haptic();
+      });
+      row.append(label, remove);
+      el.ruleList.appendChild(row);
+    }
+  }
+
+  function addRule() {
+    const text = el.ruleText.value.trim();
+    const detail = Number(el.ruleDetail.value);
+    if (!text || !Number.isFinite(detail)) {
+      showToast('Enter a text and a valid day', true);
+      return;
+    }
+    const repeat = el.ruleRepeat.value === 'weekly' ? 'weekly' : 'monthly';
+    const id = `r${Date.now()}`;
+    templates[id] = {
+      id,
+      text,
+      time: slotBucket(el.ruleTime.value) || '09:00',
+      repeat,
+      weekday: repeat === 'weekly' ? ((detail % 7) + 7) % 7 : 0,
+      day: repeat === 'monthly'
+        ? (detail === -1 ? -1 : Math.min(31, Math.max(1, Math.round(detail))))
+        : 1,
+      ts: Date.now(),
+      deleted: false
+    };
+    el.ruleText.value = '';
+    persistTemplates();
+    renderRules();
+    renderDay();
+    scheduleAutoPush();
+    haptic();
+    showToast('Recurring item added');
   }
 
   async function testConnection() {
@@ -717,6 +1082,13 @@
     });
   });
   document.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'k') {
+      event.preventDefault();
+      renderSearch();
+      openOverlay('search-overlay');
+      setTimeout(() => el.searchInput.focus(), 60);
+      return;
+    }
     if (event.key === 'Escape') {
       document.querySelectorAll('.sheet-overlay:not([hidden])').forEach((overlay) => closeOverlay(overlay.id));
     }
@@ -737,6 +1109,8 @@
   $('test-connection').addEventListener('click', testConnection);
   el.exportBtn.addEventListener('click', () => syncToGithub(false));
   $('download-md').addEventListener('click', downloadMarkdown);
+  el.copyBtn.addEventListener('click', copyCurrentDay);
+  el.ruleAdd.addEventListener('click', addRule);
 
   window.addEventListener('online', () => {
     if (offlinePending && settings.autosave) scheduleAutoPush();
@@ -754,7 +1128,11 @@
 
   buildTimeGrid();
   applySettings();
-  renderDay();
+
+  // Siri Shortcut / bookmark support: ?date=YYYY-MM-DD or #YYYY-MM-DD opens that day.
+  const requestedDate = new URLSearchParams(location.search).get('date') || location.hash.replace(/^#/, '');
+  if (isValidKey(requestedDate)) goToDate(requestedDate);
+  else renderDay();
 
   if (settings.autosave && settings.token && settings.owner && settings.repo) {
     setTimeout(() => syncToGithub(true), 800);
