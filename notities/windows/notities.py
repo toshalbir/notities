@@ -27,6 +27,7 @@ from notities_core import (
     WEEKDAYS,
     WEEKDAYS_SHORT,
     day_number,
+    describe_template,
     iso_day,
     iso_week,
     load_days,
@@ -44,9 +45,11 @@ from notities_core import (
     save_days,
     save_settings,
     save_templates,
+    short_weekday,
     sync_once,
     test_connection,
     template_signature,
+    valid_day,
 )
 
 TEST = os.environ.get("NOTITIES_TEST") == "1"
@@ -72,6 +75,78 @@ INK_COLORS = {
     "black": "#262626",
     "gray": "#5d5a52",
 }
+
+# Same layout, four kinds of paper. `paper` is the original Moleskine cream.
+THEMES = {
+    "paper": dict(
+        BG="#d9d4c8", SURFACE="#fffdf6", WEEKEND="#fbf8ef", BORDER="#d8d0be",
+        SHADOW="#b9b2a4", SPINE="#c3bcae", TEXT="#33302a", MUTED="#8c877b",
+        INK="#2f3b46", LINE="#dfe6e8", HOUR_LINE="#c6d0d4", HOUR_TEXT="#4b5056",
+        MARGIN="#d99a96", ACCENT="#b34b42",
+    ),
+    "rain": dict(
+        BG="#cbd5d9", SURFACE="#f3f7f8", WEEKEND="#eaf1f3", BORDER="#c3ced3",
+        SHADOW="#a7b5bb", SPINE="#b3c1c7", TEXT="#2e3b42", MUTED="#6f838c",
+        INK="#31546a", LINE="#d8e3e7", HOUR_LINE="#b8cbd3", HOUR_TEXT="#465c67",
+        MARGIN="#8fa9b5", ACCENT="#416c86",
+    ),
+    "sunset": dict(
+        BG="#e6d4c4", SURFACE="#fff6ec", WEEKEND="#fdf0e2", BORDER="#e6cfb9",
+        SHADOW="#c9ae98", SPINE="#d5bba7", TEXT="#4a352a", MUTED="#9a7f6c",
+        INK="#6a3f2d", LINE="#f0dfd0", HOUR_LINE="#dfc4ab", HOUR_TEXT="#805e49",
+        MARGIN="#d98f74", ACCENT="#b5563b",
+    ),
+    "graphite": dict(
+        BG="#23272a", SURFACE="#2e3337", WEEKEND="#343a3e", BORDER="#4a5257",
+        SHADOW="#171a1c", SPINE="#3c4347", TEXT="#e6e6e2", MUTED="#9aa2a8",
+        INK="#d7dde3", LINE="#3d454a", HOUR_LINE="#596268", HOUR_TEXT="#b7bfc4",
+        MARGIN="#8a6f6c", ACCENT="#d9756a",
+    ),
+}
+THEME_INKS = {
+    "graphite": {"blue": "#bcd3e2", "black": "#f4f4f0", "gray": "#c9c6bd"},
+}
+THEME_NAMES = {"paper": "Paper", "rain": "Rain", "sunset": "Sunset", "graphite": "Graphite"}
+STICKY = {
+    "paper": "#fff2ae", "rain": "#dbeaf0", "sunset": "#ffe0bd", "graphite": "#4c4936",
+}
+
+
+def apply_theme(name: str) -> dict:
+    """Swap the module palette; callers then recolour existing widgets."""
+    palette = THEMES.get(name, THEMES["paper"])
+    globals().update(palette)
+    return palette
+
+
+def ink_for(theme: str, choice: str) -> str:
+    return THEME_INKS.get(theme, INK_COLORS).get(choice, THEME_INKS.get(theme, INK_COLORS)["blue"])
+
+
+def recolor(widget: tk.Misc, old: dict, new: dict) -> None:
+    """Recolour an existing widget tree after a theme change."""
+    mapping = {value: new[key] for key, value in old.items()}
+    options = (
+        "bg", "foreground", "activebackground", "activeforeground",
+        "highlightbackground", "troughcolor", "insertbackground",
+        "disabledforeground", "selectbackground",
+    )
+    try:
+        configured = widget.configure()
+        changes = {}
+        for key in options:
+            value = configured.get(key)
+            if not value:
+                continue
+            color = value[-1] if isinstance(value, tuple) else value
+            if color in mapping:
+                changes[key] = mapping[color]
+        if changes:
+            widget.configure(**changes)
+    except tk.TclError:
+        pass
+    for child in widget.winfo_children():
+        recolor(child, old, new)
 
 
 def visible_occurrences(templates: dict, days: dict, day, time_key: str | None = None) -> list:
@@ -107,17 +182,23 @@ class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.cfg = load_settings()
+        self.theme = self.cfg.get("theme", "paper")
+        apply_theme(self.theme)
         self.days = load_days()
         self.templates = load_templates()
-        self.ink = INK_COLORS.get(self.cfg.get("ink", "blue"), INK_COLORS["blue"])
+        self.ink = ink_for(self.theme, self.cfg.get("ink", "blue"))
         self.queue: queue.Queue = queue.Queue()
         self.syncing = False
         self.pending_sync = False
         self.local_timer = None
         self.sync_timer = None
+        self.undo_stack: list[str] = []
+        self.redo_stack: list[str] = []
+        self.focus_snapshot: str | None = None
         self.week_start = date.today() - timedelta(days=date.today().weekday())
         self.week_keys: list[str] = []
         self.slot_widgets: dict[tuple[int, str], tk.Entry] = {}
+        self.done_widgets: dict[tuple[int, str], tk.Button] = {}
         self.note_widgets: dict[int, tk.Text] = {}
         self.head_widgets: list[tuple[tk.Label, tk.Label, tk.Frame]] = []
         self.test_label: tk.Label | None = None
@@ -137,6 +218,10 @@ class App:
         self.lastweek_labels: dict[int, tk.Label] = {}
         self.ghost_labels: dict[tuple[int, str], tk.Label] = {}
         self.mini_window: tk.Toplevel | None = None
+        self.mini_body: tk.Frame | None = None
+        self.mini_note: tk.Frame | None = None
+        self.mini_position: tuple[int, int] | None = None
+        self.mini_timer: str | None = None
 
         self._build()
         self.render()
@@ -146,6 +231,9 @@ class App:
         root.bind("<Control-s>", lambda _e: self.flush())
         root.bind("<Control-k>", lambda _e: self.open_search())
         root.bind("<Control-Alt-n>", self.focus_app)
+        root.bind("<Control-z>", self.on_undo)
+        root.bind("<Control-y>", self.on_redo)
+        root.bind("<Control-Shift-Z>", self.on_redo)
 
         if not TEST:
             if self.cfg.get("token") and self.cfg.get("owner") and self.cfg.get("repo"):
@@ -174,9 +262,12 @@ class App:
         self.range_label.pack(side="left", padx=(8, 6))
         self._button(top, "Today", self.go_today).pack(side="left", padx=2, pady=8)
         self._button(top, "Big", self.open_today_big, width=5).pack(side="left", padx=2, pady=8)
+        self._button(top, "↶", self.on_undo, width=3).pack(side="left", padx=2, pady=8)
+        self._button(top, "↷", self.on_redo, width=3).pack(side="left", padx=2, pady=8)
         self._button(top, "Find", self.open_search, width=5).pack(side="left", padx=2, pady=8)
         self._button(top, "Rules", self.open_recurring, width=5).pack(side="left", padx=2, pady=8)
         self._button(top, "Mini", self.toggle_mini, width=5).pack(side="left", padx=2, pady=8)
+        self._button(top, "Theme", self.cycle_theme, width=6).pack(side="left", padx=2, pady=8)
 
         self.status_label = tk.Label(top, text="Saved locally", bg=SURFACE, fg=MUTED, font=self.font_small, anchor="e")
         self.status_label.pack(side="left", fill="x", expand=True, padx=10)
@@ -341,6 +432,7 @@ class App:
         grid.pack(fill="both", expand=True, padx=(6, 6), pady=(2, 2))
         grid.columnconfigure(2, weight=1)
         grid.columnconfigure(3, weight=0)
+        grid.columnconfigure(4, weight=0)
 
         margin = tk.Frame(grid, bg=MARGIN, width=2)
         margin.grid(row=0, column=1, sticky="ns", rowspan=len(TIMES))
@@ -365,6 +457,12 @@ class App:
             entry.bind("<<Paste>>", lambda _e, c=col, t=time_key: self.paste_slot(c, t))
             entry.bind("<Double-Button-1>", lambda _e, c=col, t=time_key: self.toggle_done(c, t))
             entry.bind("<FocusIn>", lambda _e, c=col, t=time_key: self.show_last_week(c, t))
+            entry.bind("<FocusIn>", lambda _e: self.begin_focus(), add="+")
+            entry.bind("<FocusOut>", lambda _e: self.commit_focus(), add="+")
+            entry.bind("<Up>", lambda _e, c=col, t=time_key: self.arrow_slot(c, t, -1))
+            entry.bind("<Down>", lambda _e, c=col, t=time_key: self.arrow_slot(c, t, 1))
+            entry.bind("<Return>", lambda _e, c=col, t=time_key: self.arrow_slot(c, t, 1))
+            entry.bind("<Tab>", lambda _e, c=col, t=time_key: self.focus_done(c, t))
             self.slot_widgets[(col, time_key)] = entry
 
             ghost = tk.Label(
@@ -373,6 +471,19 @@ class App:
             )
             ghost.grid(row=index, column=3, sticky="w")
             self.ghost_labels[(col, time_key)] = ghost
+
+            done = tk.Button(
+                grid, text="○", bd=0, relief="flat", bg=card, fg=MUTED,
+                activebackground=card, activeforeground=ACCENT,
+                font=self.font_small, padx=2, pady=0,
+                command=lambda c=col, t=time_key: self.toggle_done(c, t),
+            )
+            done.grid(row=index, column=4, sticky="e", padx=(0, 4))
+            done.bind("<Up>", lambda _e, c=col, t=time_key: self.arrow_done(c, t, -1))
+            done.bind("<Down>", lambda _e, c=col, t=time_key: self.arrow_done(c, t, 1))
+            done.bind("<Tab>", lambda _e, c=col, t=time_key: self.focus_slot(c, t, 1))
+            done.bind("<Return>", lambda _e, c=col, t=time_key: self.focus_slot(c, t))
+            self.done_widgets[(col, time_key)] = done
             grid.rowconfigure(index, weight=1)
 
         now_line = tk.Frame(grid, bg=ACCENT, height=2)
@@ -397,6 +508,8 @@ class App:
         notes.pack(fill="x", padx=(6, 6), pady=(0, 8))
         notes.bind("<KeyRelease>", lambda _e, c=col: self.on_note(c))
         notes.bind("<<Paste>>", lambda _e, c=col: self.paste_note(c))
+        notes.bind("<FocusIn>", lambda _e: self.begin_focus(), add="+")
+        notes.bind("<FocusOut>", lambda _e: self.commit_focus(), add="+")
         self.note_widgets[col] = notes
 
         if scroller is not None:
@@ -456,6 +569,9 @@ class App:
                     font=self.font_entry_done if done else self.font_entry,
                     fg=MUTED if done else self.ink,
                 )
+                self.done_widgets[(col, time_key)].config(
+                    text="✓" if done else "○", fg=ACCENT if done else MUTED,
+                )
                 recurring = visible_occurrences(self.templates, self.days, day, time_key)
                 ghost_text = "" if value.strip() else " · ".join(item["text"] for item in recurring)
                 ghost = self.ghost_labels[(col, time_key)]
@@ -479,6 +595,103 @@ class App:
     def set_status(self, text: str, kind: str = "") -> None:
         color = ACCENT if kind == "error" else OK if kind == "ok" else MUTED
         self.status_label.config(text=text, fg=color)
+
+    # ---------- Undo and keyboard navigation ----------
+
+    def snapshot(self) -> str:
+        return json.dumps(
+            {"days": self.days, "templates": self.templates},
+            ensure_ascii=False, sort_keys=True,
+        )
+
+    def push_undo(self) -> None:
+        self.undo_stack.append(self.snapshot())
+        if len(self.undo_stack) > 40:
+            self.undo_stack.pop(0)
+        self.redo_stack.clear()
+        self.focus_snapshot = None
+
+    def begin_focus(self) -> None:
+        if self.focus_snapshot is None:
+            self.focus_snapshot = self.snapshot()
+
+    def commit_focus(self) -> None:
+        if self.focus_snapshot is not None and self.focus_snapshot != self.snapshot():
+            self.undo_stack.append(self.focus_snapshot)
+            if len(self.undo_stack) > 40:
+                self.undo_stack.pop(0)
+            self.redo_stack.clear()
+        self.focus_snapshot = None
+
+    def apply_state(self, state: dict) -> None:
+        self.days = state.get("days", {})
+        self.templates = normalize_templates(state.get("templates", {}))
+        self.focus_snapshot = None
+        self.flush()
+        self.render()
+        self.set_status("Undone", "ok")
+
+    def on_undo(self, _event=None) -> None:
+        if _event is not None and isinstance(self.root.focus_get(), (tk.Entry, tk.Text)):
+            return  # keep native text undo inside fields
+        if not self.undo_stack:
+            self.set_status("Nothing to undo")
+            return
+        self.redo_stack.append(self.snapshot())
+        self.apply_state(json.loads(self.undo_stack.pop()))
+
+    def on_redo(self, _event=None) -> None:
+        if _event is not None and isinstance(self.root.focus_get(), (tk.Entry, tk.Text)):
+            return
+        if not self.redo_stack:
+            self.set_status("Nothing to redo")
+            return
+        self.undo_stack.append(self.snapshot())
+        self.apply_state(json.loads(self.redo_stack.pop()))
+        self.set_status("Redone", "ok")
+
+    def _step_time(self, time_key: str, amount: int) -> str:
+        index = TIMES.index(time_key) if time_key in TIMES else 0
+        return TIMES[max(0, min(len(TIMES) - 1, index + amount))]
+
+    def arrow_slot(self, col: int, time_key: str, amount: int) -> str:
+        self.slot_widgets[(col, self._step_time(time_key, amount))].focus_set()
+        return "break"
+
+    def focus_slot(self, col: int, time_key: str, amount: int = 0) -> str:
+        self.slot_widgets[(col, self._step_time(time_key, amount))].focus_set()
+        return "break"
+
+    def focus_done(self, col: int, time_key: str) -> str:
+        self.done_widgets[(col, time_key)].focus_set()
+        return "break"
+
+    def arrow_done(self, col: int, time_key: str, amount: int) -> str:
+        self.done_widgets[(col, self._step_time(time_key, amount))].focus_set()
+        return "break"
+
+    def cycle_theme(self) -> None:
+        names = list(THEMES)
+        self.set_theme(names[(names.index(self.theme) + 1) % len(names)])
+
+    def set_theme(self, name: str) -> None:
+        if name not in THEMES:
+            return
+        old = {key: globals()[key] for key in THEMES["paper"]}
+        self.theme = name
+        new = apply_theme(name)
+        recolor(self.root, old, new)
+        if self.mini_window is not None:
+            recolor(self.mini_window, old, new)
+            sticky = STICKY.get(self.theme, STICKY["paper"])
+            if self.mini_note is not None:
+                self.mini_note.config(bg=sticky)
+            self._render_mini()
+        self.ink = ink_for(self.theme, self.cfg.get("ink", "blue"))
+        self.cfg["theme"] = self.theme
+        save_settings(self.cfg)
+        self.render()
+        self.set_status(f"Theme · {THEME_NAMES[self.theme]}", "ok")
 
     # ---------- Changes ----------
 
@@ -506,6 +719,7 @@ class App:
         self.schedule_save()
 
     def toggle_done(self, col: int, time_key: str) -> None:
+        self.push_undo()
         key = self.week_keys[col]
         entry = normalize_entry(self.days.get(key))
         field = entry["slots"].get(time_key, {"text": "", "ts": 0, "done": False})
@@ -525,6 +739,9 @@ class App:
             fg=MUTED if field["done"] else self.ink,
         )
         self.ghost_labels[(col, time_key)].config(text="")
+        self.done_widgets[(col, time_key)].config(
+            text="✓" if field["done"] else "○", fg=ACCENT if field["done"] else MUTED,
+        )
         self.flush()
 
     def show_last_week(self, col: int, time_key: str) -> None:
@@ -557,6 +774,7 @@ class App:
         label = f"{WEEKDAYS_SHORT[(day.weekday() + 1) % 7]} {day.day} {MONTHS_SHORT[day.month - 1]}"
         if not messagebox.askyesno("Clear day", f"Clear all entries and notes for {label}?", parent=self.root):
             return
+        self.push_undo()
         stamp = now_ms()
         entry = normalize_entry(self.days.get(key))
         entry["slots"] = {time_key: {"text": "", "ts": stamp} for time_key in TIMES}
@@ -914,39 +1132,46 @@ try {
         tk.Label(win, text="Recurring items", bg=SURFACE, fg=TEXT,
                  font=self.font_bold).grid(row=0, column=0, columnspan=4, sticky="w", padx=14, pady=(12, 4))
 
-        listing = tk.Listbox(win, width=54, height=7, bd=1, relief="flat",
+        listing = tk.Listbox(win, width=64, height=6, bd=1, relief="flat",
                              bg="#fafaf8", fg=TEXT, font=self.font_small)
         listing.grid(row=1, column=0, columnspan=4, padx=14)
 
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         text_var = tk.StringVar()
         time_var = tk.StringVar(value="09:00")
         repeat_var = tk.StringVar(value="monthly")
+        every_var = tk.StringVar(value="1")
+        pattern_var = tk.StringVar(value="date")
         detail_var = tk.StringVar(value="1")
-        fields = [
-            ("Text", text_var, None),
-            ("Time", time_var, TIMES),
-            ("Repeat", repeat_var, ["weekly", "monthly"]),
-            ("Day / weekday", detail_var, None),
-        ]
-        for row, (label, variable, options) in enumerate(fields, start=2):
+        weekday_var = tk.StringVar(value="Monday")
+        skip_var = tk.StringVar()
+
+        def field(row: int, label: str, widget: tk.Misc) -> None:
             tk.Label(win, text=label, bg=SURFACE, fg=MUTED, font=self.font_small,
-                     anchor="w").grid(row=row, column=0, sticky="w", padx=(14, 6), pady=4)
-            if options:
-                tk.OptionMenu(win, variable, *options).grid(
-                    row=row, column=1, columnspan=3, sticky="ew", padx=(0, 14), pady=4
-                )
-            else:
-                tk.Entry(win, textvariable=variable, bd=1, relief="flat",
-                         bg="#fafaf8", fg=TEXT, font=self.font_ui).grid(
-                    row=row, column=1, columnspan=3, sticky="ew", padx=(0, 14), pady=4
-                )
+                     anchor="w").grid(row=row, column=0, sticky="w", padx=(14, 6), pady=3)
+            widget.grid(row=row, column=1, columnspan=3, sticky="ew", padx=(0, 14), pady=3)
+
+        field(2, "Text", tk.Entry(win, textvariable=text_var, bd=1, relief="flat",
+                                  bg="#fafaf8", fg=TEXT, font=self.font_ui))
+        field(3, "Time", tk.OptionMenu(win, time_var, *TIMES))
+        field(4, "Repeat", tk.OptionMenu(win, repeat_var, "weekly", "monthly"))
+        field(5, "Every", tk.Entry(win, textvariable=every_var, bd=1, relief="flat",
+                                   bg="#fafaf8", fg=TEXT, font=self.font_ui))
+        field(6, "When", tk.OptionMenu(win, pattern_var, "date", "last", "nth", "weekday"))
+        detail_entry = tk.Entry(win, textvariable=detail_var, bd=1, relief="flat",
+                                bg="#fafaf8", fg=TEXT, font=self.font_ui)
+        field(7, "Day / number", detail_entry)
+        field(8, "Weekday", tk.OptionMenu(win, weekday_var, *days))
+        field(9, "Skip dates", tk.Entry(win, textvariable=skip_var, bd=1, relief="flat",
+                                        bg="#fafaf8", fg=TEXT, font=self.font_ui))
 
         hint = tk.Label(
             win,
-            text="Monthly: day 1–31, or -1 for the last day of the month. Weekly: 0=Mon … 6=Sun.",
-            bg=SURFACE, fg=MUTED, font=self.font_small, justify="left",
+            text="Every N weeks/months starts from the date the rule was made. Monthly: day 1–31, "
+                 "last day, or e.g. first Monday. Skip dates: 2026-12-25, 2027-01-01.",
+            bg=SURFACE, fg=MUTED, font=self.font_small, justify="left", wraplength=520,
         )
-        hint.grid(row=6, column=0, columnspan=4, sticky="w", padx=14, pady=(2, 6))
+        hint.grid(row=10, column=0, columnspan=4, sticky="w", padx=14, pady=(2, 6))
 
         def items() -> list[dict]:
             return sorted(
@@ -957,12 +1182,7 @@ try {
         def refresh() -> None:
             listing.delete(0, "end")
             for item in items():
-                when = (
-                    f"{WEEKDAYS[(item['weekday'] + 1) % 7]} {item['time']}"
-                    if item["repeat"] == "weekly"
-                    else f"day {item['day'] if item['day'] != -1 else 'last'} {item['time']}"
-                )
-                listing.insert("end", f"{item['text']}  ·  {when}")
+                listing.insert("end", f"{item['text']}  ·  {describe_template(item)}")
 
         def selected() -> dict | None:
             choice = listing.curselection()
@@ -975,30 +1195,71 @@ try {
             text_var.set(item["text"])
             time_var.set(item["time"])
             repeat_var.set(item["repeat"])
-            detail_var.set(str(item["weekday"] if item["repeat"] == "weekly" else item["day"]))
+            every_var.set(str(item.get("every", 1)))
+            weekday_var.set(days[item["weekday"]])
+            skip_var.set(", ".join(item.get("skip", [])))
+            if item["repeat"] == "weekly":
+                pattern_var.set("weekday")
+                detail_var.set("1")
+            elif item.get("nth"):
+                pattern_var.set("nth")
+                detail_var.set(str(item["nth"]))
+            elif item["day"] == -1:
+                pattern_var.set("last")
+                detail_var.set("1")
+            else:
+                pattern_var.set("date")
+                detail_var.set(str(item["day"]))
+
+        def clear_form() -> None:
+            listing.selection_clear(0, "end")
+            text_var.set("")
+            time_var.set("09:00")
+            repeat_var.set("monthly")
+            every_var.set("1")
+            pattern_var.set("date")
+            detail_var.set("1")
+            weekday_var.set("Monday")
+            skip_var.set("")
 
         def save() -> None:
-            raw = detail_var.get().strip()
-            try:
-                detail = int(raw)
-            except ValueError:
-                self.set_status("Use a number for day/weekday", "error")
-                return
             if not text_var.get().strip():
                 self.set_status("Enter a text first", "error")
                 return
+            try:
+                every = max(1, min(52, int(every_var.get().strip())))
+                detail = int(detail_var.get().strip())
+            except ValueError:
+                self.set_status("Use numbers for 'Every' and 'Day / number'", "error")
+                return
+            repeat = repeat_var.get()
+            pattern = pattern_var.get()
             current = selected()
+            anchor = (current or {}).get("anchor") or date.today().isoformat()
+            if repeat == "weekly":
+                weekday, day, nth = days.index(weekday_var.get()), 1, 0
+            elif pattern == "last":
+                weekday, day, nth = days.index(weekday_var.get()), -1, 0
+            elif pattern == "nth":
+                weekday, day, nth = days.index(weekday_var.get()), 1, max(-1, min(5, detail))
+            else:
+                weekday, day, nth = 0, (max(1, min(31, detail)) if detail > 0 else -1), 0
+            skip = [item.strip() for item in skip_var.get().split(",") if valid_day(item.strip())]
+            self.push_undo()
             item_id = current["id"] if current else f"r{now_ms()}"
-            stamp = now_ms()
             self.templates[item_id] = normalize_templates({
                 item_id: {
                     "id": item_id,
                     "text": text_var.get().strip(),
                     "time": time_var.get(),
-                    "repeat": repeat_var.get(),
-                    "weekday": detail if repeat_var.get() == "weekly" else 0,
-                    "day": detail if repeat_var.get() == "monthly" else 1,
-                    "ts": stamp,
+                    "repeat": repeat,
+                    "weekday": weekday,
+                    "day": day,
+                    "every": every,
+                    "anchor": anchor,
+                    "nth": nth,
+                    "skip": skip,
+                    "ts": now_ms(),
                     "deleted": False,
                 }
             })[item_id]
@@ -1012,6 +1273,7 @@ try {
             item = selected()
             if not item:
                 return
+            self.push_undo()
             self.templates[item["id"]] = {**item, "deleted": True, "ts": now_ms()}
             save_templates(self.templates)
             refresh()
@@ -1023,7 +1285,9 @@ try {
         refresh()
 
         buttons = tk.Frame(win, bg=SURFACE)
-        buttons.grid(row=7, column=0, columnspan=4, sticky="e", padx=14, pady=12)
+        buttons.grid(row=11, column=0, columnspan=4, sticky="e", padx=14, pady=12)
+        tk.Button(buttons, text="New", command=clear_form, bd=0, relief="flat",
+                  bg=SURFACE, fg=TEXT, font=self.font_bold, padx=10).pack(side="left", padx=4)
         tk.Button(buttons, text="Delete", command=remove, bd=0, relief="flat",
                   bg=SURFACE, fg=ACCENT, font=self.font_bold, padx=10).pack(side="left", padx=4)
         tk.Button(buttons, text="Save item", command=save, bd=0, relief="flat",
@@ -1101,38 +1365,118 @@ try {
         refresh()
 
     def toggle_mini(self) -> None:
+        """A small translucent sticky note with today only, always on top."""
         if self.mini_window is not None:
-            self.mini_window.destroy()
-            self.mini_window = None
+            self.close_mini()
             return
         win = tk.Toplevel(self.root)
-        win.title("Next appointments")
-        win.configure(bg=SURFACE)
-        win.geometry("330x220+40+40")
+        win.overrideredirect(True)
         win.attributes("-topmost", True)
-        win.protocol("WM_DELETE_WINDOW", self.toggle_mini)
+        win.attributes("-alpha", 0.94)
+        win.configure(bg=SHADOW)
+        if self.mini_position is None:
+            x = max(20, self.root.winfo_screenwidth() - 360)
+            y = 120
+        else:
+            x, y = self.mini_position
+        win.geometry(f"330x280+{x}+{y}")
+        win.protocol("WM_DELETE_WINDOW", self.close_mini)
+
+        sticky = STICKY.get(self.theme, STICKY["paper"])
+        note = tk.Frame(win, bg=sticky, padx=2, pady=2)
+        note.pack(fill="both", expand=True, padx=4, pady=4,
+                  ipadx=8, ipady=6)
+        self.mini_note = note
+
+        head = tk.Frame(note, bg=sticky)
+        head.pack(fill="x")
+        title = tk.Label(
+            head, text="TODAY · " + short_weekday(date.today()).upper(),
+            bg=sticky, fg=TEXT, font=self.font_bold, anchor="w", cursor="fleur",
+        )
+        title.pack(side="left", fill="x", expand=True)
+        tk.Button(
+            head, text="✕", command=self.close_mini, bd=0, relief="flat",
+            bg=sticky, fg=TEXT, activebackground=sticky, activeforeground=ACCENT,
+            font=self.font_small, padx=4,
+        ).pack(side="right")
+
+        body = tk.Frame(note, bg=sticky)
+        body.pack(fill="both", expand=True, pady=(6, 0))
+        self.mini_body = body
         self.mini_window = win
-        self.mini_list = tk.Listbox(win, bd=0, relief="flat", bg=SURFACE, fg=INK,
-                                    font=self.font_ui)
-        self.mini_list.pack(fill="both", expand=True, padx=10, pady=10)
+
+        drag = {"x": 0, "y": 0}
+
+        def press(event) -> None:
+            drag["x"], drag["y"] = event.x_root, event.y_root
+
+        def move(event) -> None:
+            dx, dy = event.x_root - drag["x"], event.y_root - drag["y"]
+            drag["x"], drag["y"] = event.x_root, event.y_root
+            self.mini_position = (win.winfo_x() + dx, win.winfo_y() + dy)
+            win.geometry(f"+{self.mini_position[0]}+{self.mini_position[1]}")
+
+        for widget in (head, title):
+            widget.bind("<ButtonPress-1>", press)
+            widget.bind("<B1-Motion>", move)
+
         self._render_mini()
+        self.mini_timer = self.root.after(60000, self._tick_mini)
+
+    def close_mini(self) -> None:
+        if self.mini_timer is not None:
+            self.root.after_cancel(self.mini_timer)
+            self.mini_timer = None
+        if self.mini_window is not None:
+            self.mini_position = (self.mini_window.winfo_x(), self.mini_window.winfo_y())
+            self.mini_window.destroy()
+        self.mini_window = None
+        self.mini_body = None
+        self.mini_note = None
+
+    def _tick_mini(self) -> None:
+        self._render_mini()
+        self.mini_timer = self.root.after(60000, self._tick_mini)
 
     def _render_mini(self) -> None:
-        if self.mini_window is None or not self.mini_window.winfo_exists():
+        if self.mini_body is None or not self.mini_body.winfo_exists():
             return
+        sticky = STICKY.get(self.theme, STICKY["paper"])
+        for child in list(self.mini_body.winfo_children()):
+            child.destroy()
         today = date.today()
-        upcoming = []
-        for offset in range(7):
-            day = today + timedelta(days=offset)
-            entry = normalize_entry(self.days.get(iso_day(day)))
-            for time_key, field in sorted(entry["slots"].items()):
-                if field["text"].strip():
-                    upcoming.append((day, time_key, field["text"].strip()))
-            for item in visible_occurrences(self.templates, self.days, day):
-                upcoming.append((day, item["time"], item["text"]))
-        self.mini_list.delete(0, "end")
-        for day, time_key, text in upcoming[:12]:
-            self.mini_list.insert("end", f"{WEEKDAYS_SHORT[(day.weekday() + 1) % 7]} {time_key}  {text}")
+        key = iso_day(today)
+        entry = normalize_entry(self.days.get(key))
+        rows = []
+        for time_key, field in sorted(entry["slots"].items()):
+            text = field["text"].strip()
+            if text:
+                rows.append((time_key, text, bool(field["done"])))
+        for item in visible_occurrences(self.templates, self.days, today):
+            if item["time"] in entry["slots"] and entry["slots"][item["time"]]["text"].strip():
+                continue
+            rows.append((item["time"], item["text"], False))
+        if not rows:
+            empty = tk.Label(
+                self.mini_body, text="Nothing planned today.", bg=sticky,
+                fg=MUTED, font=self.font_small, anchor="w", justify="left",
+            )
+            empty.pack(fill="x", pady=8)
+            return
+        for time_key, text, done in rows[:10]:
+            row = tk.Frame(self.mini_body, bg=sticky)
+            row.pack(fill="x", pady=2)
+            tk.Label(
+                row, text=time_key, bg=sticky, fg=MUTED,
+                font=self.font_small, width=5, anchor="w",
+            ).pack(side="left")
+            label = tk.Label(
+                row, text=("✓ " if done else "") + text, bg=sticky,
+                fg=MUTED if done else TEXT, font=self.font_small,
+                anchor="w", justify="left", wraplength=250,
+            )
+            label.pack(side="left", fill="x", expand=True)
 
     # ---------- Settings ----------
 
@@ -1165,31 +1509,39 @@ try {
             entry.grid(row=row, column=1, columnspan=2, sticky="ew", padx=(0, 16), pady=(12 if row == 0 else 4, 0))
             variables[key] = var
 
-        tk.Label(win, text="Ink", bg=SURFACE, fg=MUTED, font=self.font_small,
-                 anchor="w").grid(row=5, column=0, sticky="w", padx=(16, 8), pady=(8, 0))
         ink_var = tk.StringVar(value=self.cfg.get("ink", "blue"))
-        tk.OptionMenu(win, ink_var, "blue", "black", "gray").grid(
-            row=5, column=1, columnspan=2, sticky="w", padx=(0, 16), pady=(8, 0)
+        theme_var = tk.StringVar(
+            value=THEME_NAMES.get(self.cfg.get("theme", "paper"), "Paper")
         )
+        for row, label, menu in (
+            (5, "Ink", tk.OptionMenu(win, ink_var, "blue", "black", "gray")),
+            (6, "Paper", tk.OptionMenu(win, theme_var, *THEME_NAMES.values())),
+        ):
+            tk.Label(win, text=label, bg=SURFACE, fg=MUTED, font=self.font_small,
+                     anchor="w").grid(row=row, column=0, sticky="w", padx=(16, 8), pady=(8, 0))
+            menu.grid(row=row, column=1, columnspan=2, sticky="w", padx=(0, 16), pady=(8, 0))
 
         autosave = tk.BooleanVar(value=bool(self.cfg.get("autosave", True)))
         tk.Checkbutton(
             win, text="Automatically sync with GitHub", variable=autosave,
             bg=SURFACE, fg=TEXT, activebackground=SURFACE, font=self.font_ui,
             anchor="w", highlightthickness=0,
-        ).grid(row=6, column=0, columnspan=3, sticky="w", padx=14, pady=(14, 2))
+        ).grid(row=7, column=0, columnspan=3, sticky="w", padx=14, pady=(14, 2))
 
         hint = (
-            "Use the same token and repository as on your iPhone. The Windows app reads and\n"
-            "writes notities/agenda.json; changes from both devices are merged."
+            "Use the same token and repository as on your iPhone. The token is encrypted with\n"
+            "Windows DPAPI before it is written to settings.json. Agenda data stays in sync."
         )
         tk.Label(win, text=hint, bg="#f6f5f2", fg="#6b6f74", font=self.font_small,
-                 justify="left", padx=8, pady=6).grid(row=7, column=0, columnspan=3, sticky="ew", padx=16, pady=8)
+                 justify="left", padx=8, pady=6).grid(row=8, column=0, columnspan=3, sticky="ew", padx=16, pady=8)
 
         self.test_label = tk.Label(win, text="", bg=SURFACE, fg=MUTED, font=self.font_small, anchor="w")
-        self.test_label.grid(row=8, column=0, columnspan=3, sticky="ew", padx=16)
+        self.test_label.grid(row=9, column=0, columnspan=3, sticky="ew", padx=16)
 
         def current_cfg() -> dict:
+            name = next(
+                (key for key, label in THEME_NAMES.items() if label == theme_var.get()), "paper"
+            )
             return {
                 "owner": variables["owner"].get().strip(),
                 "repo": variables["repo"].get().strip().removesuffix(".git"),
@@ -1200,6 +1552,7 @@ try {
                 "lastSignature": self.cfg.get("lastSignature", ""),
                 "lastBackup": self.cfg.get("lastBackup", ""),
                 "ink": ink_var.get(),
+                "theme": name,
             }
 
         def do_test() -> None:
@@ -1215,17 +1568,23 @@ try {
 
         def do_save() -> None:
             self.cfg = current_cfg()
-            self.ink = INK_COLORS.get(self.cfg.get("ink", "blue"), INK_COLORS["blue"])
-            save_settings(self.cfg)
-            close()
-            self.render()
+            name = self.cfg.get("theme", "paper")
+            if name != self.theme:
+                save_settings(self.cfg)
+                close()
+                self.set_theme(name)
+            else:
+                self.ink = ink_for(self.theme, self.cfg.get("ink", "blue"))
+                save_settings(self.cfg)
+                close()
+                self.render()
             self.set_status("Settings saved")
             self.start_sync(True)
 
         win.protocol("WM_DELETE_WINDOW", close)
 
         buttons = tk.Frame(win, bg=SURFACE)
-        buttons.grid(row=9, column=0, columnspan=3, sticky="e", padx=16, pady=14)
+        buttons.grid(row=10, column=0, columnspan=3, sticky="e", padx=16, pady=14)
         tk.Button(buttons, text="Check", command=do_test, bd=1, relief="flat", bg="#ffffff",
                   fg=TEXT, font=self.font_bold, padx=12, pady=6).pack(side="left", padx=4)
         tk.Button(buttons, text="Cancel", command=close, bd=1, relief="flat", bg="#ffffff",

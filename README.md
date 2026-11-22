@@ -8,6 +8,9 @@ A warm paper-style daily agenda for your iPhone: one page per day with half-hour
 - A red **now line** shows the current time; a small **○/✓** button marks an appointment done (double-click a Windows slot).
 - Free notes at the bottom of the page, with ruled lines.
 - Handwriting font (Patrick Hand) or plain system font, plus blue-black / black / pencil-grey ink — switch in ⚙ Settings.
+- Four paper themes: **Cream**, **Regen / Rain**, **Zonsondergang / Sunset** and **Graphite**. The same four are in the Windows app.
+- `#tags` in any slot or note become small coloured dots in the left margin, plus a tag row under the grid. `#werk` is blue, `#gezondheid` green and `#rekeningen` red; other tags get a stable colour. The same tags are clickable filter chips in Search.
+- **Undo** with `Ctrl+Z` (or `⌘Z`) or the ↶ button, and redo with `Ctrl+Y` / `Ctrl+Shift+Z`. Clearing a day, a wrong tick, a settings change and recurring-rule edits are all undoable.
 - Search by text, time or date; tap a result to jump to that day. `#tags` in any note become clickable filter chips in Search.
 - A muted **Last week** line shows what was written seven days earlier.
 - **Copy day** puts the current day on the clipboard; ⬇ downloads a `.md` file without a token.
@@ -18,10 +21,11 @@ A warm paper-style daily agenda for your iPhone: one page per day with half-hour
 
 In ⚙ Settings → **Recurring items** you can define rules that appear as pale hints in the matching slots:
 
-- **Weekly**: weekday `0` = Monday … `6` = Sunday, at a chosen time.
-- **Monthly**: day `1`–`31`, or `-1` for the **last day of the month** — ideal for rent, direct debits and other fixed payments. If a month is shorter than the chosen day, the item falls on that month's last day.
+- **Weekly**: weekday `0` = Monday … `6` = Sunday, at a chosen time. `Every N` makes it fortnightly or every 3 weeks, counted from the day you created the rule.
+- **Monthly**: day `1`–`31`, or `-1` for the **last day of the month** — ideal for rent, direct debits and other fixed payments. If a month is shorter than the chosen day, the item falls on that month's last day. Choose **Nth weekday** for rules like *first Monday of the month* (or *last Friday*). `Every N` also works for months.
+- **Skip dates**: one or more `YYYY-MM-DD` dates to except, e.g. holidays: `2026-12-25, 2027-01-01`.
 
-Rules live in `agenda.json` under `templates` and sync both ways. Clearing a day hides a hint for **that date only**; it does not delete the rule. Tapping ✓ on a hint copies its text into the slot so you can tick it off.
+The rule list shows a readable summary such as `Team lead · first Monday of the month 09:00 · except 2027-01-01`. Rules live in `agenda.json` under `templates` and sync both ways; older rules keep working unchanged. Clearing a day hides a hint for **that date only**; it does not delete the rule. Tapping ✓ on a hint copies its text into the slot so you can tick it off.
 
 One read-only `backups/YYYY-MM.json` snapshot is written per month, so older months stay recoverable.
 
@@ -49,7 +53,7 @@ Open the app **from the home screen icon**: it then runs fullscreen without the 
 5. Generate the token, copy the whole `github_pat_…` text and paste it into ⚙ **Settings → Access token**.
 6. Optionally check it with **Check** and then tap **Save**.
 
-Autosave is on by default and can be turned off in the same settings. The token lives only in browser storage on your device and is never stored in the app code.
+Autosave is on by default and can be turned off in the same settings. The token field uses password autofill, so iOS can keep the token in **iCloud Keychain** (Passwords). A web page cannot call the Keychain API directly, so the PWA keeps the token only for the current session (session storage) and removes any older plaintext copy from local storage on first load. It is never stored in the app code or in `agenda.json`. On Windows the token is encrypted with **DPAPI** before `settings.json` is written, so only your Windows account can read it.
 
 ### What goes to GitHub
 
@@ -74,13 +78,13 @@ The folder name `notities` and the branch are configurable. Autosave waits until
 
 `windows/` contains a fullscreen Tkinter app in the same style, laid out like an open Moleskine week: Monday–Wednesday on the left page, Thursday–Friday on the right page, and Saturday and Sunday stacked in the rightmost column (with its own clear scrollbar). The pages fill the full window height, with a centre fold, soft shadow and cream paper. Each day has a half-hour grid from 06:00 to 20:00 and a notes field. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins). Old 15-minute entries are folded into the nearest half-hour slot automatically, so no notes are lost.
 
-Toolbar buttons: **Today**, **Big** (large read-only card for today), **Find** (`Ctrl+K`), **Rules** (weekly/monthly templates), **Mini** (always-on-top widget for the next seven days), **Copy**, **Print**, ↻ (sync), ⚙ (settings), ⛶ (fullscreen) and ✕ (quit). Month tabs on the left jump to a month. `Ctrl+Alt+N` brings the app to the front and returns to today. Double-click a slot to toggle its done tick. The small ✕ next to a date clears that whole day — including its notes and any recurring hints for that date. Print puts the entire week on one landscape page with a torn-paper edge; if no printer is available, it opens a PDF instead.
+Toolbar buttons: **Today**, **Big** (large read-only card for today), ↶/↷ (undo/redo), **Find** (`Ctrl+K`), **Rules** (weekly/monthly templates with intervals, nth weekday and skip dates), **Mini** (a translucent, draggable sticky note with **today only**, always on top), **Theme** (cycles Cream → Rain → Sunset → Graphite), **Copy**, **Print**, ↻ (sync), ⚙ (settings), ⛶ (fullscreen) and ✕ (quit). Month tabs on the left jump to a month. `Ctrl+Alt+N` brings the app to the front and returns to today; `Ctrl+Z` / `Ctrl+Y` undo and redo. In a day grid, ↑/↓ and Enter move between half-hour slots, Tab jumps to the ○/✓ tick, and Enter on a tick returns to typing. Double-click a slot also toggles its done tick. The small ✕ next to a date clears that whole day — including its notes and any recurring hints for that date. Print puts the entire week on one landscape page with a torn-paper edge; if no printer is available, it opens a PDF instead.
 
 1. In the Windows app, enter the same username, repository, branch, folder and token as on the iPhone (⚙).
 2. `windows/maak-exe.bat` builds `Notities.exe` (PyInstaller is installed automatically if needed) and copies it to the Start menu and startup locations.
 3. Escape temporarily leaves fullscreen; the ↻ button syncs immediately. The status bar shows **Waiting to sync…** before a push.
 
-The iPhone app must use the latest `app.js`: older versions only write `agenda.md` and never read from GitHub. After an upload, reopen the app on the iPhone to refresh the service worker cache.
+The iPhone app must use the latest `app.js` (v12): older versions only write `agenda.md` and never read from GitHub. After an upload, reopen the app on the iPhone to refresh the service worker cache (`notities-shell-v12`).
 
 ## Try it locally
 
@@ -107,4 +111,4 @@ Then open `http://localhost:8000`.
 
 ## Privacy
 
-Notes stay on your device until they are synced to GitHub. No account, backend or analytics; the only network calls go straight to `api.github.com`.
+Notes stay on your device until they are synced to GitHub. No account, backend or analytics; the only network calls go straight to `api.github.com`. The GitHub token is session-only on iPhone (with iCloud Keychain autofill) and DPAPI-encrypted on Windows. Undo history is kept in memory only and is never uploaded.

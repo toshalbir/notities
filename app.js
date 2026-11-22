@@ -27,8 +27,10 @@
     pageDate: $('page-date'),
     pageNum: $('page-num'),
     timeCol: $('time-col'),
+    tagDotsCol: $('tag-dots-col'),
     slotCol: $('slot-col'),
     doneCol: $('done-col'),
+    dayTags: $('day-tags'),
     nowLine: $('now-line'),
     lastWeek: $('last-week'),
     notesInput: $('notes-input'),
@@ -46,11 +48,46 @@
     ruleTime: $('rule-time'),
     ruleRepeat: $('rule-repeat'),
     ruleDetail: $('rule-detail'),
+    rulePattern: $('rule-pattern'),
+    ruleWeekday: $('rule-weekday'),
+    ruleEvery: $('rule-every'),
+    ruleSkip: $('rule-skip'),
     ruleAdd: $('rule-add')
   };
   const slotInputs = {};
   const doneButtons = {};
+  const tagDots = {};
   const INK_COLORS = { blue: '#2f3b46', black: '#262626', gray: '#5d5a52' };
+  const TOKEN_SESSION = 'notities.v1.sessionToken';
+  const THEME_META = { paper: '#fffdf6', rain: '#f3f7f8', sunset: '#fff6ec', graphite: '#2e3337' };
+
+  // A few familiar tags get a fixed colour; the rest get a stable one from their name.
+  const TAG_COLORS = {
+    '#werk': '#416c86', '#work': '#416c86', '#office': '#416c86',
+    '#gezondheid': '#3d7a50', '#health': '#3d7a50', '#sport': '#3d7a50',
+    '#rekeningen': '#b34b42', '#bills': '#b34b42', '#money': '#b34b42', '#geld': '#b34b42',
+    '#privé': '#8b6aa3', '#prive': '#8b6aa3', '#family': '#8b6aa3',
+    '#boodschappen': '#b8862f', '#shopping': '#b8862f',
+  };
+  const TAG_PALETTE = ['#416c86', '#3d7a50', '#b34b42', '#8b6aa3', '#b8862f', '#4d8d8a'];
+
+  function tagColor(tag) {
+    const known = TAG_COLORS[String(tag).toLowerCase()];
+    if (known) return known;
+    let hash = 0;
+    for (const char of String(tag)) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+    return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
+  }
+
+  function tagsIn(text) {
+    return [...String(text || '').matchAll(/#[\p{L}\p{N}_-]+/gu)]
+      .map((match) => match[0].toLowerCase())
+      .filter((tag, index, all) => all.indexOf(tag) === index);
+  }
+
+  function editableTarget(target) {
+    return Boolean(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]'));
+  }
 
   /* ---------- Datum ---------- */
 
@@ -89,6 +126,29 @@
 
   function lastDayOfMonth(date) {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  }
+
+  // `weekday` is 0=Mon … 6=Sun; `nth` is 1–5 or -1 for the last one.
+  function nthWeekdayFor(date, weekday, nth) {
+    if (!nth) return null;
+    const last = lastDayOfMonth(date);
+    const jsWeekday = (weekday + 1) % 7;
+    if (nth === -1) {
+      const lastDate = new Date(date.getFullYear(), date.getMonth(), last);
+      return last - ((lastDate.getDay() - jsWeekday + 7) % 7);
+    }
+    const first = new Date(date.getFullYear(), date.getMonth(), 1);
+    const day = 1 + ((jsWeekday - first.getDay() + 7) % 7) + 7 * (nth - 1);
+    return day <= last ? day : null;
+  }
+
+  function anchorDate(item, fallback) {
+    if (isValidKey(item.anchor)) return parseKey(item.anchor);
+    if (item.ts) {
+      const fromStamp = new Date(item.ts);
+      if (!Number.isNaN(fromStamp.getTime())) return fromStamp;
+    }
+    return fallback;
   }
 
   /* ---------- Data (with timestamps for sync) ---------- */
@@ -145,6 +205,11 @@
     const text = String(value.text || '').trim();
     if (!id || !text) return null;
     const day = Number(value.day);
+    const every = Number(value.every);
+    const nth = Number(value.nth);
+    const skip = Array.isArray(value.skip)
+      ? [...new Set(value.skip.filter((item) => isValidKey(String(item).trim())))].sort()
+      : [];
     return {
       id,
       text,
@@ -152,6 +217,10 @@
       repeat: value.repeat === 'weekly' ? 'weekly' : 'monthly',
       weekday: ((Number(value.weekday) || 0) % 7 + 7) % 7,
       day: Number.isFinite(day) ? (day === -1 ? -1 : Math.min(31, Math.max(1, Math.round(day)))) : 1,
+      every: Number.isFinite(every) ? Math.min(52, Math.max(1, Math.round(every))) : 1,
+      anchor: isValidKey(value.anchor) ? value.anchor : '',
+      nth: Number.isFinite(nth) && nth !== 0 ? (nth < 0 ? -1 : Math.min(5, Math.round(nth))) : 0,
+      skip,
       ts: Number(value.ts) || 0,
       deleted: Boolean(value.deleted)
     };
@@ -183,13 +252,32 @@
 
   function occurrencesForDay(date, time) {
     const last = lastDayOfMonth(date);
+    const key = dateKey(date);
     return Object.values(templates)
       .filter((item) => {
-        if (item.deleted) return false;
+        if (item.deleted || item.skip.includes(key)) return false;
         if (time && item.time !== time) return false;
-        if (item.repeat === 'weekly') return date.getDay() === ((item.weekday + 1) % 7);
-        const target = item.day === -1 ? last : Math.min(item.day, last);
-        return date.getDate() === target;
+        if (item.repeat === 'weekly') {
+          if (date.getDay() !== ((item.weekday + 1) % 7)) return false;
+          if (item.every > 1) {
+            const origin = anchorDate(item, date);
+            const originMonday = shiftDate(origin, -((origin.getDay() + 6) % 7));
+            const thisMonday = shiftDate(date, -((date.getDay() + 6) % 7));
+            const weeks = Math.round((thisMonday - originMonday) / 604800000);
+            if (weeks < 0 || weeks % item.every) return false;
+          }
+          return true;
+        }
+        if (item.every > 1) {
+          const origin = anchorDate(item, date);
+          const months = (date.getFullYear() * 12 + date.getMonth()) -
+            (origin.getFullYear() * 12 + origin.getMonth());
+          if (months < 0 || months % item.every) return false;
+        }
+        const target = item.nth
+          ? nthWeekdayFor(date, item.weekday, item.nth)
+          : (item.day === -1 ? last : Math.min(item.day, last));
+        return target !== null && date.getDate() === target;
       })
       .sort((a, b) => a.time.localeCompare(b.time) || a.text.localeCompare(b.text));
   }
@@ -310,23 +398,42 @@
       token: '',
       autosave: true,
       font: 'hand',
-      ink: 'blue'
+      ink: 'blue',
+      theme: 'paper'
     };
   }
 
+  // iOS web apps cannot call the Keychain API directly. Safari can keep the
+  // token in iCloud Keychain via password autofill; we keep it only in the
+  // session and never write it to localStorage.
   function loadSettings() {
     const defaults = defaultSettings();
+    let stored = {};
     try {
-      const stored = JSON.parse(localStorage.getItem(KEYS.settings) || '{}');
-      return { ...defaults, ...(stored && typeof stored === 'object' ? stored : {}) };
-    } catch (_) {
-      return defaults;
+      const parsed = JSON.parse(localStorage.getItem(KEYS.settings) || '{}');
+      if (parsed && typeof parsed === 'object') stored = parsed;
+    } catch (_) { /* use defaults */ }
+    const clean = { ...defaults, ...stored };
+    const legacy = typeof stored.token === 'string' ? stored.token.trim() : '';
+    if (legacy) {
+      try { sessionStorage.setItem(TOKEN_SESSION, legacy); } catch (_) { /* ignore */ }
     }
+    let token = '';
+    try { token = sessionStorage.getItem(TOKEN_SESSION) || ''; } catch (_) { /* ignore */ }
+    clean.token = token;
+    if (legacy) persistSettings(clean); // migrate: strip plaintext from localStorage
+    return clean;
   }
 
   function persistSettings(value) {
+    const stored = { ...value };
+    delete stored.token;
     try {
-      localStorage.setItem(KEYS.settings, JSON.stringify(value));
+      if (value.token) sessionStorage.setItem(TOKEN_SESSION, value.token);
+      else sessionStorage.removeItem(TOKEN_SESSION);
+    } catch (_) { /* session storage unavailable: token stays in memory only */ }
+    try {
+      localStorage.setItem(KEYS.settings, JSON.stringify(stored));
       return true;
     } catch (_) {
       showToast('Could not save settings', true);
@@ -341,6 +448,73 @@
   let settings = loadSettings();
   let currentKey = localStorage.getItem(KEYS.last) || dateKey(new Date());
   if (!isValidKey(currentKey)) currentKey = dateKey(new Date());
+
+  /* ---------- Undo ---------- */
+
+  const undoStack = [];
+  const redoStack = [];
+
+  function snapshotState() {
+    return JSON.stringify({ notes, templates, settings, currentKey });
+  }
+
+  function pushUndo() {
+    undoStack.push(snapshotState());
+    if (undoStack.length > 40) undoStack.shift();
+    redoStack.length = 0;
+  }
+
+  let fieldSnapshot = null;
+
+  function beginFieldEdit() {
+    if (fieldSnapshot === null) fieldSnapshot = snapshotState();
+  }
+
+  function endFieldEdit() {
+    if (fieldSnapshot !== null && fieldSnapshot !== snapshotState()) {
+      undoStack.push(fieldSnapshot);
+      if (undoStack.length > 40) undoStack.shift();
+      redoStack.length = 0;
+    }
+    fieldSnapshot = null;
+  }
+
+  function applySnapshot(raw) {
+    const state = JSON.parse(raw);
+    notes = state.notes;
+    templates = state.templates;
+    settings = state.settings;
+    currentKey = state.currentKey;
+    try { localStorage.setItem(KEYS.last, currentKey); } catch (_) { /* not critical */ }
+    persistNotes();
+    persistTemplates();
+    persistSettings(settings);
+    applySettings();
+    fillSettingsForm();
+    renderDay();
+    scheduleAutoPush();
+  }
+
+  function undo() {
+    if (!undoStack.length) {
+      showToast('Nothing to undo');
+      return;
+    }
+    redoStack.push(snapshotState());
+    applySnapshot(undoStack.pop());
+    haptic();
+    showToast('Undone');
+  }
+
+  function redo() {
+    if (!redoStack.length) {
+      showToast('Nothing to redo');
+      return;
+    }
+    undoStack.push(snapshotState());
+    applySnapshot(redoStack.pop());
+    showToast('Redone');
+  }
 
   /* ---------- Display ---------- */
 
@@ -357,7 +531,11 @@
 
   function applySettings() {
     document.body.dataset.font = settings.font === 'system' ? 'system' : 'hand';
-    document.documentElement.style.setProperty('--ink', INK_COLORS[settings.ink] || INK_COLORS.blue);
+    const theme = THEME_META[settings.theme] ? settings.theme : 'paper';
+    document.body.dataset.theme = theme;
+    document.body.dataset.ink = INK_COLORS[settings.ink] ? settings.ink : 'blue';
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEME_META[theme]);
     refreshSyncBase();
   }
 
@@ -381,11 +559,18 @@
       label.textContent = time;
       el.timeCol.appendChild(label);
 
+      const dot = document.createElement('div');
+      dot.className = 'tag-dot';
+      el.tagDotsCol.appendChild(dot);
+      tagDots[time] = dot;
+
       const input = document.createElement('input');
       input.type = 'text';
       input.className = `slot${isHour ? ' hour' : ''}`;
       input.dataset.time = time;
       input.setAttribute('aria-label', `Appointment at ${time}`);
+      input.addEventListener('focus', beginFieldEdit);
+      input.addEventListener('blur', endFieldEdit);
       input.autocomplete = 'off';
       input.autocapitalize = 'sentences';
       input.spellcheck = true;
@@ -415,6 +600,7 @@
   }
 
   function toggleDone(time) {
+    pushUndo();
     flushLocalSave();
     const entry = getEntry(currentKey, true);
     const field = entry.slots[time] || { text: '', ts: 0, done: false };
@@ -448,16 +634,40 @@
     el.pageDate.textContent = `${WEEKDAYS[date.getDay()]} ${longDate(date)}`;
     el.pageNum.textContent = String(dayOfYear(date));
 
+    const dayTags = new Set();
     for (const time of TIMES) {
       const field = entry.slots[time] || { text: '', done: false };
       const input = slotInputs[time];
+      const hint = visibleOccurrences(date, time).map((item) => item.text).join(' · ');
       input.value = field.text || '';
-      input.placeholder = field.text.trim()
-        ? ''
-        : visibleOccurrences(date, time).map((item) => item.text).join(' · ');
+      input.placeholder = field.text.trim() ? '' : hint;
       input.classList.toggle('done', Boolean(field.done));
       doneButtons[time].textContent = field.done ? '✓' : '○';
       doneButtons[time].classList.toggle('on', Boolean(field.done));
+
+      const tags = tagsIn(field.text.trim() ? field.text : hint);
+      const dot = tagDots[time];
+      dot.replaceChildren();
+      dot.title = tags.join(', ');
+      for (const tag of tags.slice(0, 3)) {
+        const mark = document.createElement('i');
+        mark.style.background = tagColor(tag);
+        dot.appendChild(mark);
+      }
+      for (const tag of tags) dayTags.add(tag);
+    }
+    for (const tag of tagsIn(entry.notes.text)) dayTags.add(tag);
+    for (const item of visibleOccurrences(date)) {
+      for (const tag of tagsIn(item.text)) dayTags.add(tag);
+    }
+    el.dayTags.replaceChildren();
+    for (const tag of [...dayTags].sort()) {
+      const chip = document.createElement('span');
+      chip.className = 'day-tag';
+      const mark = document.createElement('i');
+      mark.style.background = tagColor(tag);
+      chip.append(mark, document.createTextNode(tag));
+      el.dayTags.appendChild(chip);
     }
 
     const previous = [];
@@ -551,6 +761,25 @@
     return new TextDecoder().decode(bytes);
   }
 
+  const ORDINALS = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth', '-1': 'last' };
+
+  function describeTemplate(item) {
+    const weekday = WEEKDAYS[(item.weekday + 1) % 7];
+    let when;
+    if (item.repeat === 'weekly') {
+      when = `${weekday} ${item.time}`;
+      if (item.every > 1) when += ` · every ${item.every} weeks`;
+    } else if (item.nth) {
+      when = `${ORDINALS[item.nth] || item.nth} ${weekday} of the month ${item.time}`;
+      if (item.every > 1) when += ` · every ${item.every} months`;
+    } else {
+      when = `day ${item.day === -1 ? 'last' : item.day} ${item.time}`;
+      if (item.every > 1) when += ` · every ${item.every} months`;
+    }
+    if (item.skip.length) when += ` · except ${item.skip.join(', ')}`;
+    return when;
+  }
+
   function buildMarkdown() {
     const keys = Object.keys(notes).filter((key) => isValidKey(key) && hasContent(notes[key])).sort().reverse();
     const lines = ['# Notes', ''];
@@ -558,10 +787,7 @@
     if (active.length) {
       lines.push('## Recurring', '');
       for (const item of active.sort((a, b) => a.repeat.localeCompare(b.repeat) || a.time.localeCompare(b.time))) {
-        const when = item.repeat === 'weekly'
-          ? `${WEEKDAYS[(item.weekday + 1) % 7]} ${item.time}`
-          : `day ${item.day === -1 ? 'last' : item.day} ${item.time}`;
-        lines.push(`- ${when} — ${item.text}`);
+        lines.push(`- ${describeTemplate(item)} — ${item.text}`);
       }
       lines.push('');
     }
@@ -791,6 +1017,25 @@
     }
   }
 
+  function clearCurrentDay() {
+    const date = parseKey(currentKey);
+    if (!window.confirm(`Clear all entries and notes for ${longDate(date)}?`)) return;
+    pushUndo();
+    flushLocalSave();
+    const entry = getEntry(currentKey, true);
+    const stamp = Date.now();
+    entry.slots = {};
+    for (const time of TIMES) entry.slots[time] = { text: '', ts: stamp, done: false };
+    entry.notes = { text: '', ts: stamp };
+    for (const item of visibleOccurrences(date)) entry.hidden[item.id] = stamp;
+    notes[currentKey] = normalizeEntry(entry);
+    flushLocalSave();
+    renderDay();
+    scheduleAutoPush();
+    haptic();
+    showToast('Day cleared — tap ↶ to undo');
+  }
+
   /* ---------- Search ---------- */
 
   function escapeHtml(value) {
@@ -840,7 +1085,9 @@
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = `tag-chip${activeTag === tag ? ' active' : ''}`;
-      chip.textContent = tag;
+      const mark = document.createElement('i');
+      mark.style.background = tagColor(tag);
+      chip.append(mark, document.createTextNode(tag));
       chip.addEventListener('click', () => {
         activeTag = activeTag === tag ? '' : tag;
         renderSearch();
@@ -920,10 +1167,11 @@
       repo: $('cfg-repo').value.trim().replace(/\.git$/i, ''),
       branch: $('cfg-branch').value.trim() || 'main',
       path: $('cfg-path').value.trim().replace(/^\/+|\/+$/g, '') || 'notities',
-      token: $('cfg-token').value.trim(),
+      token: $('cfg-token').value.trim() || (settings && settings.token) || '',
       autosave: $('cfg-autosave').checked,
       font: $('cfg-font').value === 'system' ? 'system' : 'hand',
-      ink: $('cfg-ink').value
+      ink: $('cfg-ink').value,
+      theme: THEME_META[$('cfg-theme').value] ? $('cfg-theme').value : 'paper'
     };
   }
 
@@ -932,10 +1180,12 @@
     $('cfg-repo').value = settings.repo || '';
     $('cfg-branch').value = settings.branch || 'main';
     $('cfg-path').value = settings.path || 'notities';
-    $('cfg-token').value = settings.token || '';
+    $('cfg-token').value = '';
+    $('cfg-token').placeholder = settings.token ? 'Saved in this session' : 'github_pat_…';
     $('cfg-autosave').checked = settings.autosave !== false;
     $('cfg-font').value = settings.font === 'system' ? 'system' : 'hand';
     $('cfg-ink').value = INK_COLORS[settings.ink] ? settings.ink : 'blue';
+    $('cfg-theme').value = THEME_META[settings.theme] ? settings.theme : 'paper';
     el.connectionStatus.textContent = '';
     el.connectionStatus.className = 'connection-status';
     renderRules();
@@ -955,16 +1205,14 @@
     for (const item of active) {
       const row = document.createElement('div');
       row.className = 'rule-item';
-      const when = item.repeat === 'weekly'
-        ? `${WEEKDAYS[item.weekday]} ${item.time}`
-        : `day ${item.day === -1 ? 'last' : item.day} ${item.time}`;
       const label = document.createElement('span');
-      label.textContent = `${item.text} · ${when}`;
+      label.textContent = `${item.text} · ${describeTemplate(item)}`;
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.textContent = '✕';
       remove.setAttribute('aria-label', `Remove ${item.text}`);
       remove.addEventListener('click', () => {
+        pushUndo();
         templates[item.id] = { ...item, deleted: true, ts: Date.now() };
         persistTemplates();
         renderRules();
@@ -979,26 +1227,51 @@
 
   function addRule() {
     const text = el.ruleText.value.trim();
-    const detail = Number(el.ruleDetail.value);
-    if (!text || !Number.isFinite(detail)) {
-      showToast('Enter a text and a valid day', true);
+    if (!text) {
+      showToast('Enter a text for the recurring item', true);
       return;
     }
+    const time = slotBucket(el.ruleTime.value) || '09:00';
     const repeat = el.ruleRepeat.value === 'weekly' ? 'weekly' : 'monthly';
+    const pattern = el.rulePattern.value;
+    const rawDetail = Number(el.ruleDetail.value);
+    const detail = Number.isFinite(rawDetail) ? rawDetail : 1;
+    const weekday = (((Number(el.ruleWeekday.value) || 0) % 7) + 7) % 7;
+    const rawEvery = Number(el.ruleEvery.value);
+    const every = Number.isFinite(rawEvery) ? Math.min(52, Math.max(1, Math.round(rawEvery))) : 1;
+    const skip = el.ruleSkip.value.split(/[,\s]+/).map((value) => value.trim()).filter(isValidKey);
+
+    let day = 1;
+    let nth = 0;
+    let ruleWeekday = weekday;
+    if (repeat !== 'weekly') {
+      if (pattern === 'nth') {
+        nth = Math.max(-1, Math.min(5, Math.round(detail || 1))) || 1;
+      } else if (pattern === 'last') {
+        day = -1;
+      } else {
+        day = detail === -1 ? -1 : Math.min(31, Math.max(1, Math.round(detail || 1)));
+      }
+    }
+
+    pushUndo();
     const id = `r${Date.now()}`;
     templates[id] = {
       id,
       text,
-      time: slotBucket(el.ruleTime.value) || '09:00',
+      time,
       repeat,
-      weekday: repeat === 'weekly' ? ((detail % 7) + 7) % 7 : 0,
-      day: repeat === 'monthly'
-        ? (detail === -1 ? -1 : Math.min(31, Math.max(1, Math.round(detail))))
-        : 1,
+      weekday: ruleWeekday,
+      day,
+      every,
+      anchor: dateKey(new Date()),
+      nth,
+      skip,
       ts: Date.now(),
       deleted: false
     };
     el.ruleText.value = '';
+    el.ruleSkip.value = '';
     persistTemplates();
     renderRules();
     renderDay();
@@ -1048,6 +1321,8 @@
 
   /* ---------- Gebeurtenissen ---------- */
 
+  el.notesInput.addEventListener('focus', beginFieldEdit);
+  el.notesInput.addEventListener('blur', endFieldEdit);
   el.notesInput.addEventListener('input', () => {
     const entry = getEntry(currentKey, true);
     entry.notes = { text: el.notesInput.value, ts: Date.now() };
@@ -1082,11 +1357,23 @@
     });
   });
   document.addEventListener('keydown', (event) => {
-    if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'k') {
+    const key = String(event.key).toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && key === 'k') {
       event.preventDefault();
       renderSearch();
       openOverlay('search-overlay');
       setTimeout(() => el.searchInput.focus(), 60);
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && key === 'z' && !editableTarget(event.target)) {
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && key === 'y' && !editableTarget(event.target)) {
+      event.preventDefault();
+      redo();
       return;
     }
     if (event.key === 'Escape') {
@@ -1097,6 +1384,7 @@
   $('settings-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const previous = settings.autosave;
+    pushUndo();
     settings = formSettings();
     if (persistSettings(settings)) {
       applySettings();
@@ -1109,6 +1397,8 @@
   $('test-connection').addEventListener('click', testConnection);
   el.exportBtn.addEventListener('click', () => syncToGithub(false));
   $('download-md').addEventListener('click', downloadMarkdown);
+  $('clear-day').addEventListener('click', clearCurrentDay);
+  $('undo-day').addEventListener('click', undo);
   el.copyBtn.addEventListener('click', copyCurrentDay);
   el.ruleAdd.addEventListener('click', addRule);
 

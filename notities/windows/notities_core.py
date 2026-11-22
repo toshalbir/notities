@@ -7,6 +7,7 @@ on conflict, the most recent change wins.
 from __future__ import annotations
 
 import base64
+import ctypes
 import json
 import os
 import re
@@ -17,6 +18,7 @@ from urllib import error, parse, request
 
 APP_NAME = "Notities"
 SCHEMA = 1
+VAULT_PREFIX = "dpapi:"
 
 WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -101,6 +103,30 @@ def short_month(value: date) -> str:
     return MONTHS_SHORT[value.month - 1]
 
 
+def parse_iso_day(value: object) -> date | None:
+    """Strict ISO date parser used for anchors and exception dates."""
+    if not valid_day(value):
+        return None
+    return date.fromisoformat(str(value))
+
+
+def last_dom(year: int, month: int) -> int:
+    following = date(year + (month // 12), month % 12 + 1, 1)
+    return (following - timedelta(days=1)).day
+
+
+def nth_weekday(year: int, month: int, weekday: int, nth: int) -> int | None:
+    """Day-of-month for 'first Monday', 'last Friday', etc. weekday is 0=Mon."""
+    if nth == 0:
+        return None
+    if nth == -1:
+        last = last_dom(year, month)
+        return last - (date(year, month, last).weekday() - weekday) % 7
+    first = date(year, month, 1)
+    candidate = 1 + (weekday - first.weekday()) % 7 + 7 * (nth - 1)
+    return candidate if candidate <= last_dom(year, month) else None
+
+
 # ---------- Data ----------
 
 def normalize_field(value: object) -> dict:
@@ -170,35 +196,48 @@ def has_content(entry: dict) -> bool:
 # ---------- Recurring items ----------
 
 def normalize_template(value: object) -> dict | None:
-    """Normalize one recurring item. Returns None for unusable input."""
+    """Normalize one recurring item. Returns None for unusable input.
+
+    Older rules have no `every`, `anchor`, `nth` or `skip`; the defaults below
+    make them behave exactly as before (every week/month, on a fixed date).
+    """
     if not isinstance(value, dict):
         return None
     item_id = str(value.get("id") or "").strip()
     text = str(value.get("text") or "").strip()
     if not item_id or not text:
         return None
-    try:
-        ts = int(value.get("ts", 0))
-    except (TypeError, ValueError):
-        ts = 0
-    repeat = "monthly" if value.get("repeat") == "monthly" else "weekly"
-    try:
-        weekday = int(value.get("weekday", 0))
-    except (TypeError, ValueError):
-        weekday = 0
-    try:
-        day = int(value.get("day", 1))
-    except (TypeError, ValueError):
-        day = 1
-    time_key = bucket_time(value.get("time")) or "09:00"
+
+    def integer(name: str, fallback: int) -> int:
+        try:
+            return int(value.get(name, fallback))
+        except (TypeError, ValueError):
+            return fallback
+
+    every = min(52, max(1, integer("every", 1)))
+    anchor = str(value.get("anchor") or "").strip()
+    if not valid_day(anchor):
+        anchor = ""
+    nth = integer("nth", 0)
+    nth = 0 if nth == 0 else (-1 if nth < 0 else min(5, nth))
+    raw_skip = value.get("skip")
+    skip: list[str] = []
+    if isinstance(raw_skip, (list, tuple, set)):
+        skip = sorted({str(item) for item in raw_skip if valid_day(item)})
+    elif isinstance(raw_skip, str) and valid_day(raw_skip.strip()):
+        skip = [raw_skip.strip()]
     return {
         "id": item_id,
         "text": text,
-        "time": time_key,
-        "repeat": repeat,
-        "weekday": weekday % 7,          # 0 = Monday
-        "day": -1 if day == -1 else min(31, max(1, day)),
-        "ts": ts,
+        "time": bucket_time(value.get("time")) or "09:00",
+        "repeat": "monthly" if value.get("repeat") == "monthly" else "weekly",
+        "weekday": integer("weekday", 0) % 7,   # 0 = Monday
+        "day": -1 if integer("day", 1) == -1 else min(31, max(1, integer("day", 1))),
+        "every": every,
+        "anchor": anchor,
+        "nth": nth,
+        "skip": skip,
+        "ts": integer("ts", 0),
         "deleted": bool(value.get("deleted", False)),
     }
 
@@ -228,21 +267,54 @@ def merge_templates(local: dict, remote: object) -> bool:
     return changed
 
 
+def _anchor_date(item: dict, fallback: date) -> date:
+    anchor = parse_iso_day(item.get("anchor"))
+    if anchor is not None:
+        return anchor
+    stamp = item.get("ts", 0)
+    if stamp:
+        try:
+            return datetime.fromtimestamp(stamp / 1000).date()
+        except (ValueError, OSError, OverflowError):
+            pass
+    return fallback
+
+
 def occurrences_for_day(templates: dict, day: date, time_key: str | None = None) -> list[dict]:
-    """Recurring items that fall on `day`, optionally filtered by time slot."""
-    last_dom = (date(day.year + (day.month // 12), day.month % 12 + 1, 1) - timedelta(days=1)).day
+    """Recurring items that fall on `day`, optionally filtered by time slot.
+
+    Supports every-N-weeks/months, nth weekday of the month and per-rule
+    exception dates. Old rules (interval 1, no nth, no exceptions) are unchanged.
+    """
+    end_of_month = last_dom(day.year, day.month)
+    day_iso = iso_day(day)
     result = []
     for item in templates.values():
-        if item["deleted"]:
+        if item["deleted"] or day_iso in item.get("skip", []):
             continue
         if time_key is not None and item["time"] != time_key:
             continue
+        every = item.get("every", 1)
         if item["repeat"] == "weekly":
             if day.weekday() != item["weekday"]:
                 continue
+            if every > 1:
+                origin = monday(_anchor_date(item, day))
+                weeks = (monday(day) - origin).days // 7
+                if weeks < 0 or weeks % every:
+                    continue
         else:
-            target = last_dom if item["day"] == -1 else min(item["day"], last_dom)
-            if day.day != target:
+            if every > 1:
+                origin = _anchor_date(item, day)
+                months = (day.year * 12 + day.month) - (origin.year * 12 + origin.month)
+                if months < 0 or months % every:
+                    continue
+            nth = item.get("nth", 0)
+            if nth:
+                target = nth_weekday(day.year, day.month, item["weekday"], nth)
+            else:
+                target = end_of_month if item["day"] == -1 else min(item["day"], end_of_month)
+            if target is None or day.day != target:
                 continue
         result.append(item)
     return sorted(result, key=lambda item: (item["time"], item["text"]))
@@ -303,6 +375,32 @@ def signature(days: dict, templates: dict | None = None) -> str:
     )
 
 
+ORDINALS = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", -1: "last"}
+
+
+def describe_template(item: dict) -> str:
+    """Human-readable rule, also used in the Markdown export."""
+    weekday = WEEKDAYS[(item["weekday"] + 1) % 7]
+    every = item.get("every", 1)
+    if item["repeat"] == "weekly":
+        when = f"{weekday} {item['time']}"
+        if every > 1:
+            when += f" · every {every} weeks"
+    elif item.get("nth"):
+        label = ORDINALS.get(item["nth"], str(item["nth"]))
+        when = f"{label} {weekday} of the month {item['time']}"
+        if every > 1:
+            when += f" · every {every} months"
+    else:
+        day_label = "last" if item["day"] == -1 else str(item["day"])
+        when = f"day {day_label} {item['time']}"
+        if every > 1:
+            when += f" · every {every} months"
+    if item.get("skip"):
+        when += " · except " + ", ".join(item["skip"])
+    return when
+
+
 def build_markdown(days: dict, templates: dict | None = None) -> str:
     keys = sorted(
         (k for k in days if valid_day(k) and has_content(days[k])),
@@ -313,12 +411,7 @@ def build_markdown(days: dict, templates: dict | None = None) -> str:
     if active:
         lines += ["## Recurring", ""]
         for item in sorted(active, key=lambda t: (t["repeat"], t["time"], t["text"])):
-            when = (
-                f"{WEEKDAYS[(item['weekday'] + 1) % 7]} {item['time']}"
-                if item["repeat"] == "weekly"
-                else f"day {item['day'] if item['day'] != -1 else 'last'} {item['time']}"
-            )
-            lines.append(f"- {when} — {item['text']}")
+            lines.append(f"- {describe_template(item)} — {item['text']}")
         lines.append("")
     if not keys:
         lines += ["_No notes yet._", ""]
@@ -336,6 +429,89 @@ def build_markdown(days: dict, templates: dict | None = None) -> str:
         if entry["notes"]["text"].strip():
             lines += ["### Notes", "", entry["notes"]["text"].strip(), ""]
     return "\n".join(lines) + "\n"
+
+
+# ---------- Token protection (Windows DPAPI) ----------
+
+class _DataBlob(ctypes.Structure):
+    _fields_ = [("cbData", ctypes.c_ulong), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+
+def _make_blob(data: bytes) -> _DataBlob:
+    buffer = ctypes.create_string_buffer(data)
+    return _DataBlob(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char)))
+
+
+def _blob_bytes(blob: _DataBlob) -> bytes:
+    if not blob.pbData or not blob.cbData:
+        return b""
+    return ctypes.string_at(blob.pbData, blob.cbData)
+
+
+def _free_blob(blob: _DataBlob) -> None:
+    if blob.pbData:
+        try:
+            ctypes.windll.kernel32.LocalFree(blob.pbData)
+        except (AttributeError, OSError):
+            pass
+
+
+def protect_token(plain: str) -> str | None:
+    """Encrypt with the current Windows user's DPAPI key.
+
+    Returns a `dpapi:`-prefixed string, or None when DPAPI is unavailable
+    (non-Windows or a restricted account), in which case callers fall back to
+    the previous behaviour.
+    """
+    if not plain:
+        return ""
+    try:
+        crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+        signature = (
+            ctypes.POINTER(_DataBlob), ctypes.c_char_p, ctypes.POINTER(_DataBlob),
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(_DataBlob),
+        )
+        crypt32.CryptProtectData.argtypes = signature
+        crypt32.CryptProtectData.restype = ctypes.c_int
+        source = _make_blob(plain.encode("utf-8"))
+        target = _DataBlob()
+        ok = crypt32.CryptProtectData(
+            ctypes.byref(source), b"Notities GitHub token", None, None, None, 0,
+            ctypes.byref(target),
+        )
+        if not ok:
+            return None
+        sealed = VAULT_PREFIX + base64.b64encode(_blob_bytes(target)).decode("ascii")
+        _free_blob(target)
+        return sealed
+    except (AttributeError, OSError, ValueError, TypeError):
+        return None
+
+
+def unprotect_token(sealed: str) -> str:
+    """Reverse `protect_token`; returns '' if the key or payload is invalid."""
+    if not sealed.startswith(VAULT_PREFIX):
+        return ""
+    try:
+        crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+        crypt32.CryptUnprotectData.argtypes = (
+            ctypes.POINTER(_DataBlob), ctypes.c_char_p, ctypes.POINTER(_DataBlob),
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(_DataBlob),
+        )
+        crypt32.CryptUnprotectData.restype = ctypes.c_int
+        raw = base64.b64decode(sealed[len(VAULT_PREFIX):].encode("ascii"))
+        source = _make_blob(raw)
+        target = _DataBlob()
+        ok = crypt32.CryptUnprotectData(
+            ctypes.byref(source), None, None, None, None, 0, ctypes.byref(target),
+        )
+        if not ok:
+            return ""
+        text = _blob_bytes(target).decode("utf-8")
+        _free_blob(target)
+        return text
+    except (AttributeError, OSError, ValueError, TypeError):
+        return ""
 
 
 # ---------- Files on this computer ----------
@@ -365,29 +541,52 @@ def default_settings() -> dict:
         "repo": "notities",
         "branch": "main",
         "path": "notities",
-        "token": "",
+        "token": "",          # decrypted, in memory only
+        "token_enc": "",      # DPAPI-sealed, the only form written to disk
         "autosave": True,
         "lastSignature": "",
         "lastBackup": "",
         "ink": "blue",
+        "theme": "paper",
     }
 
 
 def load_settings() -> dict:
     cfg = default_settings()
+    stored: dict = {}
     try:
-        stored = json.loads(settings_path().read_text(encoding="utf-8"))
-        if isinstance(stored, dict):
-            cfg.update({k: v for k, v in stored.items() if k in cfg})
+        loaded = json.loads(settings_path().read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            stored = loaded
+            cfg.update({k: v for k, v in loaded.items() if k in cfg and k not in ("token", "token_enc")})
     except (OSError, ValueError):
         pass
+
+    legacy = str(stored.get("token") or "")
+    sealed = str(stored.get("token_enc") or "")
+    if legacy:
+        # One-time migration: an old settings.json held the token in plain text.
+        cfg["token"] = legacy
+        cfg["token_enc"] = ""
+        save_settings(cfg)
+    elif sealed:
+        cfg["token"] = unprotect_token(sealed)
+        cfg["token_enc"] = sealed
     return cfg
 
 
 def save_settings(cfg: dict) -> None:
+    stored = dict(cfg)
+    token = str(stored.pop("token", "") or "")
+    if token:
+        sealed = protect_token(token)
+        if sealed:
+            stored["token_enc"] = sealed
+        else:
+            stored["token"] = token  # DPAPI unavailable: keep the old behaviour
     try:
         settings_path().write_text(
-            json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(stored, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     except OSError:
         pass

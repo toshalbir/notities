@@ -12,7 +12,7 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=11">
+  <link rel="stylesheet" href="./styles.css?v=12">
 </head>
 <body data-font="hand">
   <div class="app">
@@ -37,17 +37,22 @@
       <article class="page" aria-label="Agenda page for this day">
         <header class="page-head">
           <span id="page-date">Sunday 22 November 2026</span>
-          <span class="page-num" id="page-num">326</span>
+          <span class="head-end">
+            <button class="clear-day" id="clear-day" type="button" title="Clear this day" aria-label="Clear this day">✕</button>
+            <span class="page-num" id="page-num">326</span>
+          </span>
         </header>
 
         <div class="agenda">
           <div class="time-col" id="time-col" aria-hidden="true"></div>
+          <div class="tag-dots-col" id="tag-dots-col" aria-hidden="true"></div>
           <div class="slot-col" id="slot-col">
             <div class="now-line" id="now-line" aria-hidden="true"></div>
           </div>
           <div class="done-col" id="done-col" aria-label="Mark appointments done"></div>
         </div>
 
+        <div class="day-tags" id="day-tags" aria-label="Tags used on this day"></div>
         <div class="last-week" id="last-week"></div>
 
         <section class="free-notes">
@@ -62,6 +67,7 @@
 
     <footer class="actionbar">
       <span class="sync" id="sync-status" role="status">Saved locally</span>
+      <button class="mini-btn undo-btn" id="undo-day" type="button" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button class="mini-btn" id="copy-day" type="button" title="Copy day" aria-label="Copy day to clipboard">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="12" height="13" rx="1.5"/><path d="M9 7V4.5h10V17"/></svg>
       </button>
@@ -117,7 +123,7 @@
         </div>
         <div class="form-row">
           <label for="cfg-token">Access token</label>
-          <input id="cfg-token" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <input id="cfg-token" type="password" placeholder="github_pat_…" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div class="form-row">
           <label for="cfg-font">Agenda font</label>
@@ -134,9 +140,18 @@
             <option value="gray">Pencil grey</option>
           </select>
         </div>
+        <div class="form-row">
+          <label for="cfg-theme">Paper theme</label>
+          <select id="cfg-theme">
+            <option value="paper">Cream paper</option>
+            <option value="rain">Regen · Rain</option>
+            <option value="sunset">Zonsondergang · Sunset</option>
+            <option value="graphite">Graphite</option>
+          </select>
+        </div>
         <div class="recurring-block">
           <h3>Recurring items</h3>
-          <p class="hint">Weekly appointments or fixed monthly payments (e.g. direct debits). Use -1 for the last day of the month.</p>
+          <p class="hint">Weekly or monthly rules, also for direct debits. Use -1 for the last day, or pick “nth weekday” for e.g. the first Monday. “Every” repeats a rule; “Skip” excludes specific dates.</p>
           <div id="rule-list" class="rule-list"></div>
           <div class="rule-form">
             <input id="rule-text" type="text" placeholder="e.g. Rent" aria-label="Recurring item text">
@@ -148,6 +163,17 @@
             <input id="rule-detail" type="number" value="1" placeholder="day / weekday" aria-label="Day or weekday">
             <button id="rule-add" class="secondary-btn" type="button">Add</button>
           </div>
+          <div class="rule-advanced">
+            <select id="rule-pattern" aria-label="When">
+              <option value="date">On date</option>
+              <option value="last">Last day</option>
+              <option value="nth">Nth weekday</option>
+              <option value="weekday">Weekday</option>
+            </select>
+            <input id="rule-weekday" type="number" min="0" max="6" value="0" placeholder="0=Mon" aria-label="Weekday (0=Monday)">
+            <input id="rule-every" type="number" min="1" max="52" value="1" placeholder="Every N" aria-label="Every N weeks or months">
+            <input id="rule-skip" type="text" placeholder="Skip 2026-12-25, …" aria-label="Dates to skip">
+          </div>
         </div>
         <label class="toggle-row" for="cfg-autosave">
           <input id="cfg-autosave" type="checkbox" checked>
@@ -157,7 +183,9 @@
           Autosave waits ~5 seconds after you stop typing, then updates
           <code>notities/agenda.json</code> and <code>notities/agenda.md</code>. The JSON file is shared
           with the Windows app. Token: fine-grained with only
-          <strong>Contents: read and write</strong>. Everything also stays locally on this device.
+          <strong>Contents: read and write</strong>. Let Safari save it in iCloud Keychain via password
+          autofill; the app keeps it for the current session only, never in browser storage. Notes also
+          stay locally on this device.
         </p>
         <p class="connection-status" id="connection-status" role="status"></p>
         <div class="form-actions">
@@ -169,6 +197,6 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./app.js?v=11"></script>
+  <script src="./app.js?v=12"></script>
 </body>
 </html>
