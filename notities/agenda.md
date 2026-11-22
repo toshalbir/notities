@@ -11,6 +11,7 @@
 - 09:15 — misschien
 - 09:30 — Gelukt
 - 09:45 — yes
+- 10:00 — Super
 
 ## woensdag 18 november 2026
 
