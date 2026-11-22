@@ -12,22 +12,27 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=4">
+  <link rel="stylesheet" href="./styles.css?v=5">
 </head>
 <body>
   <div class="app">
     <header class="topbar">
       <div class="brand"><span class="brand-mark">€</span><span>Huishoudboekje</span></div>
-      <button class="sync-pill" id="sync-pill" type="button" title="Nu synchroniseren">
-        <span class="dot" id="sync-dot"></span><span id="sync-text">Alleen lokaal</span>
-      </button>
+      <div class="top-actions">
+        <button class="icon-btn" id="btn-print" type="button" title="Huidig tabblad afdrukken">🖨 <span>Print</span></button>
+        <button class="sync-pill" id="sync-pill" type="button" title="Nu synchroniseren">
+          <span class="dot" id="sync-dot"></span><span id="sync-text">Alleen lokaal</span>
+        </button>
+      </div>
     </header>
 
     <nav class="tabs" id="tabs" aria-label="Weergaven">
       <button type="button" data-view="calendar" class="active">Kalender</button>
       <button type="button" data-view="list">Lijst</button>
-      <button type="button" data-view="categories">Categorieën</button>
-      <button type="button" data-view="settings">Instellingen</button>
+      <button type="button" data-view="categories"><span class="label-long">Categorieën</span><span class="label-short">Categ.</span></button>
+      <button type="button" data-view="year">Jaar</button>
+      <button type="button" data-view="recurring"><span class="label-long">Terugkerend</span><span class="label-short">Vast</span></button>
+      <button type="button" data-view="settings"><span class="label-long">Instellingen</span><span class="label-short">Inst.</span></button>
     </nav>
 
     <div class="month-bar" id="month-bar">
@@ -55,6 +60,60 @@
 
       <section class="view" id="view-categories" aria-label="Totalen per categorie">
         <div id="category-bars" class="category-bars"></div>
+      </section>
+
+      <section class="view" id="view-year" aria-label="Jaaroverzicht">
+        <div class="year-bar">
+          <button class="nav-btn" id="year-prev" type="button" aria-label="Vorig jaar">‹</button>
+          <div class="month-title">
+            <h1 id="year-title">2026</h1>
+            <span id="year-sub">Jaartotaal € 0,00</span>
+          </div>
+          <button class="nav-btn" id="year-next" type="button" aria-label="Volgend jaar">›</button>
+        </div>
+        <div class="year-overview" id="year-overview"></div>
+        <div class="summary-strip" id="year-summary"></div>
+      </section>
+
+      <section class="view" id="view-recurring" aria-label="Terugkerende uitgaven">
+        <div class="settings">
+          <h2>Terugkerende uitgaven</h2>
+          <p class="hint">Voor vaste kosten zoals huishuur of een abonnement. Het boekje zet automatisch elke maand een uitgave neer, vanaf de gekozen maand. Bestaande maanden kun je gewoon aanpassen of verwijderen.</p>
+
+          <div class="form-row">
+            <label for="rec-amount">Bedrag per maand</label>
+            <input id="rec-amount" type="text" inputmode="decimal" placeholder="bijv. 850,00">
+          </div>
+          <div class="form-row-pair">
+            <div class="form-row">
+              <label for="rec-day">Dag van de maand</label>
+              <input id="rec-day" type="number" min="1" max="31" value="1">
+            </div>
+            <div class="form-row">
+              <label for="rec-start">Vanaf maand</label>
+              <input id="rec-start" type="month">
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="rec-end">Tot en met (optioneel)</label>
+            <input id="rec-end" type="month">
+          </div>
+          <fieldset class="category-picker">
+            <legend>Categorie</legend>
+            <div class="chips" id="rec-chips"></div>
+          </fieldset>
+          <div class="form-row">
+            <label for="rec-note">Notitie (optioneel)</label>
+            <input id="rec-note" type="text" maxlength="80" placeholder="bijv. Huishuur">
+          </div>
+          <div class="btn-row">
+            <button class="primary-btn" id="btn-add-rec" type="button">Regel toevoegen</button>
+            <button class="secondary-btn" id="btn-cancel-rec" type="button" hidden>Annuleren</button>
+          </div>
+
+          <h3 class="section-title">Actieve regels</h3>
+          <div id="rec-list" class="rec-list"></div>
+        </div>
       </section>
 
       <section class="view" id="view-settings" aria-label="Instellingen">
@@ -109,7 +168,7 @@
 
           <details class="settings-details">
             <summary>Installeren op iPhone / Windows</summary>
-            <p class="hint">Op de iPhone: open deze pagina in Safari ▸ Deel ▸ <strong>Zet toe aan startscherm</strong>. Op Windows: open de site in Edge of Chrome ▸ <strong>Installeer app</strong>. Zet in beide Supabase URL, key en hetzelfde account, en de synchronisatie doet de rest.</p>
+            <p class="hint">Op de iPhone: open deze pagina in Safari ▸ Deel ▸ <strong>Zet toe aan startscherm</strong>. Op Windows: dubbelklik <strong>Huishoudboekje.exe</strong> of open de site in Edge/Chrome ▸ <strong>Installeer app</strong>. Met de knop <strong>Print</strong> hierboven print je het tabblad waarin je zit.</p>
           </details>
         </div>
       </section>
@@ -164,6 +223,6 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=6"></script>
+  <script type="module" src="./app.js?v=7"></script>
 </body>
 </html>
