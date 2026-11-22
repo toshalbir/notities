@@ -4,10 +4,6 @@
 
 ### Afspraken
 
-- 08:00 — Magazijn
-- 11:00 — Peeters
-
-### Notities
-
-Test
+- 07:00 — Test
+- 08:00 — Test 2
 
