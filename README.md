@@ -1,91 +1,91 @@
-# Notities · Agenda
+# Notes · Agenda
 
-Een lichte, strakke dagagenda voor je iPhone: één pagina per dag met tijdvakken van 06:00 tot 20:00 per kwartier, een apart vel voor losse notities, en automatische opslag naar GitHub.
+A light, clean daily agenda for your iPhone: one page per day with 15-minute slots from 06:00 to 20:00, a separate area for free notes, and automatic sync to GitHub. A fullscreen Windows app with the same look is included.
 
-## Wat zit erin
+## Features
 
-- Tijdgrid per kwartier (6:00, 6:15, 6:30, …), zoals een Moleskine-dagagenda. Tik op een tijd om daar te typen.
-- Losse notities onderaan de pagina, met schrijflijnen.
-- Handgeschreven lettertype (Patrick Hand) of gewoon systeemlettertype — om te zetten in ⚙ Instellingen.
-- Zoeken op tekst, tijd of datum; tik op een resultaat om naar die dag te gaan.
-- **Autosave naar GitHub**: ~5 seconden nadat je stopt met typen wordt `notities/agenda.json` bijgewerkt (en `agenda.md` als leesbare kopie). Onderaan zie je de sync-status. De app haalt ook elke minuut wijzigingen van de Windows-app op.
-- Handmatig exporteren kan ook met de ⬆-knop; ⬇ downloadt een `.md`-bestand zonder token.
-- Alles staat ook lokaal op je apparaat. De app is een PWA en werkt offline (alleen sync heeft internet nodig).
+- 15-minute grid (6:00, 6:15, 6:30, …), like a Moleskine daily planner. Tap a time to type there.
+- Free notes at the bottom of the page, with ruled lines.
+- Handwriting font (Patrick Hand) or plain system font — switch in ⚙ Settings.
+- Search by text, time or date; tap a result to jump to that day.
+- **Autosave to GitHub**: about 5 seconds after you stop typing, `notities/agenda.json` is updated (plus `agenda.md` as a readable copy). The sync status is shown at the bottom. The app also pulls changes from the Windows app every minute.
+- Manual export with the ⬆ button; ⬇ downloads a `.md` file without a token.
+- Everything is also stored locally on your device. The app is a PWA and works offline (only sync needs internet).
 
-## Op GitHub zetten
+## Put it on GitHub
 
-1. Maak/ververs een publieke repository op GitHub, bijvoorbeeld `notities`.
-2. Upload alle bestanden uit deze map, inclusief `fonts`, `icons` en `tools`.
+1. Create or refresh a public repository on GitHub, for example `notes`.
+2. Upload all files from this folder, including `fonts`, `icons` and `tools`.
 3. **Settings → Pages → Deploy from a branch → `main` / `/ (root)` → Save.**
-4. Open `https://<jouw-naam>.github.io/notities/` in Safari en kies **Deel ▸ Toevoegen aan startscherm**.
+4. Open `https://<your-name>.github.io/notities/` in Safari and choose **Share ▸ Add to Home Screen**.
 
-`<jouw-naam>` vervang je door je echte GitHub-gebruikersnaam. Eigenaar en repository worden verder automatisch uit de URL herkend.
+Replace `<your-name>` with your real GitHub username. The owner and repository are then detected automatically from the URL.
 
-Open de app daarna **via het icoon op je startscherm**: dan draait hij in volledig scherm zonder adresbalk. In Safari zelf blijft de browserbalk zichtbaar — dat kan een webpagina niet uitzetten.
+Open the app **from the home screen icon**: it then runs fullscreen without the address bar. Safari itself always keeps its browser bar — a web page cannot hide it.
 
-## Token instellen
+## Set up the token
 
 1. GitHub ▸ avatar ▸ **Settings** ▸ **Developer settings** ▸ **Personal access tokens** ▸ **Fine-grained tokens** ▸ **Generate new token**.
-2. Naam, bijv. `notities-iphone`; vervaldatum bijv. 90 dagen.
-3. **Repository access**: *Only select repositories* → alleen je `notities`-repo.
+2. Name it e.g. `notes-iphone`; set an expiry, e.g. 90 days.
+3. **Repository access**: *Only select repositories* → only your `notes` repo.
 4. **Permissions → Repository permissions**: **Contents = Read and write**.
-5. Generate token, kopieer de hele `github_pat_…`-tekst en plak die in ⚙ **Instellingen → Toegangstoken**.
-6. Controleer eventueel met **Controleer verbinding** en tik op **Opslaan**.
+5. Generate the token, copy the whole `github_pat_…` text and paste it into ⚙ **Settings → Access token**.
+6. Optionally check it with **Check** and then tap **Save**.
 
-Autosave staat standaard aan; je kunt hem in dezelfde instellingen uitzetten. Het token staat alleen in Safari-opslag op jouw apparaat en wordt nooit in de app-code bewaard.
+Autosave is on by default and can be turned off in the same settings. The token lives only in browser storage on your device and is never stored in the app code.
 
-### Wat er naar GitHub gaat
+### What goes to GitHub
 
-Eén bestand is leidend voor de synchronisatie: `notities/agenda.json`. Daarnaast schrijft de app `notities/agenda.md` als leesbare kopie, met per dag de afspraken en losse notities:
+One file is authoritative for sync: `notities/agenda.json`. The app also writes `notities/agenda.md` as a readable copy, with each day's appointments and free notes:
 
 ```markdown
-# Notities
+# Notes
 
-## zondag 22 november 2026
+## Sunday 22 November 2026
 
-### Afspraken
-- 08:30 — Teamoverleg
-- 14:00 — Tandarts
+### Appointments
+- 08:30 — Team meeting
+- 14:00 — Dentist
 
-### Notities
-Vandaag het prototype afgemaakt.
+### Notes
+Finished the prototype today.
 ```
 
-De mapnaam `notities` en de branch zijn instelbaar. Autosave wacht tot je stopt met typen zodat GitHub niet bij elke toetsaanslag een commit krijgt.
+The folder name `notities` and the branch are configurable. Autosave waits until you stop typing so GitHub does not get a commit for every keystroke.
 
-## Windows-app (7 dagen naast elkaar)
+## Windows app (7 days side by side)
 
-In `windows/` staat een schermvullende Tkinter-app met dezelfde stijl: zeven dagen naast elkaar, kwartierraster van 06:00–20:00 en een notitieveld per dag. Hij gebruikt dezelfde GitHub-instellingen en hetzelfde `agenda.json`, dus wijzigingen van iPhone en Windows worden per veld samengevoegd (nieuwste tijdstempel wint).
+`windows/` contains a fullscreen Tkinter app in the same style: seven days next to each other, a 15-minute grid from 06:00 to 20:00 and a notes field per day. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins).
 
-1. Vul in de Windows-app op ⚙ dezelfde gebruikersnaam, repository, branch, map en token in als op de iPhone.
-2. `windows/maak-exe.bat` bouwt `Notities.exe` (PyInstaller wordt zo nodig automatisch geïnstalleerd).
-3. Escape haalt de app even uit fullscreen; de ↻-knop synchroniseert direct.
+1. In the Windows app, enter the same username, repository, branch, folder and token as on the iPhone (⚙).
+2. `windows/maak-exe.bat` builds `Notes.exe` (PyInstaller is installed automatically if needed).
+3. Escape temporarily leaves fullscreen; the ↻ button syncs immediately.
 
-De iPhone-app moet wel de nieuwste `app.js` gebruiken: oude versies schrijven alleen `agenda.md` en lezen nooit van GitHub. Controleer na een upload dat de app op de iPhone opnieuw is geopend (service worker-cache vernieuwen).
+The iPhone app must use the latest `app.js`: older versions only write `agenda.md` and never read from GitHub. After an upload, reopen the app on the iPhone to refresh the service worker cache.
 
-## Lokaal proberen
+## Try it locally
 
 ```powershell
 python -m http.server 8000
 ```
 
-Open daarna `http://localhost:8000`.
+Then open `http://localhost:8000`.
 
-## Bestanden
+## Files
 
-| Bestand | Doel |
+| File | Purpose |
 | --- | --- |
-| `index.html` | Structuur van de agenda |
-| `styles.css` | Lichte Moleskine-achtige vormgeving |
-| `app.js` | Opslag, tijdgrid, zoeken, tweeweg-sync en export |
-| `manifest.json` / `sw.js` | PWA en offline caching |
-| `fonts/` | Patrick Hand + licentie (SIL OFL 1.1) |
-| `icons/` | App-iconen |
-| `tools/make_icons.py` | Optioneel: iconen opnieuw genereren |
-| `windows/notities.py` | Schermvullende Windows-app met 7 dagen |
-| `windows/notities_core.py` | Gedeelde sync-logica (JSON met tijdstempels) |
-| `windows/maak-exe.bat` | Bouwt `Notities.exe` |
+| `index.html` | Agenda structure |
+| `styles.css` | Light Moleskine-style design |
+| `app.js` | Storage, time grid, search, two-way sync and export |
+| `manifest.json` / `sw.js` | PWA and offline caching |
+| `fonts/` | Patrick Hand + license (SIL OFL 1.1) |
+| `icons/` | App icons |
+| `tools/make_icons.py` | Optional: regenerate icons |
+| `windows/notities.py` | Fullscreen Windows app with 7 days |
+| `windows/notities_core.py` | Shared sync logic (JSON with timestamps) |
+| `windows/maak-exe.bat` | Builds `Notes.exe` |
 
 ## Privacy
 
-Notities blijven op je apparaat tot ze naar GitHub worden gesynchroniseerd. Geen account, backend of analyse; de enige netwerkcalls gaan rechtstreeks naar `api.github.com`.
+Notes stay on your device until they are synced to GitHub. No account, backend or analytics; the only network calls go straight to `api.github.com`.
