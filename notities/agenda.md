@@ -1,5 +1,11 @@
 # Notes
 
+## Sunday 22 November 2026
+
+### Appointments
+
+- 16:30 — Verzekering auto
+
 ## Wednesday 18 November 2026
 
 ### Appointments
