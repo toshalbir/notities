@@ -559,7 +559,7 @@
       lines.push('## Recurring', '');
       for (const item of active.sort((a, b) => a.repeat.localeCompare(b.repeat) || a.time.localeCompare(b.time))) {
         const when = item.repeat === 'weekly'
-          ? `${WEEKDAYS[item.weekday]} ${item.time}`
+          ? `${WEEKDAYS[(item.weekday + 1) % 7]} ${item.time}`
           : `day ${item.day === -1 ? 'last' : item.day} ${item.time}`;
         lines.push(`- ${when} — ${item.text}`);
       }

@@ -314,7 +314,7 @@ def build_markdown(days: dict, templates: dict | None = None) -> str:
         lines += ["## Recurring", ""]
         for item in sorted(active, key=lambda t: (t["repeat"], t["time"], t["text"])):
             when = (
-                f"{WEEKDAYS[item['weekday']]} {item['time']}"
+                f"{WEEKDAYS[(item['weekday'] + 1) % 7]} {item['time']}"
                 if item["repeat"] == "weekly"
                 else f"day {item['day'] if item['day'] != -1 else 'last'} {item['time']}"
             )

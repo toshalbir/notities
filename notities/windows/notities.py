@@ -958,7 +958,7 @@ try {
             listing.delete(0, "end")
             for item in items():
                 when = (
-                    f"{WEEKDAYS[item['weekday']]} {item['time']}"
+                    f"{WEEKDAYS[(item['weekday'] + 1) % 7]} {item['time']}"
                     if item["repeat"] == "weekly"
                     else f"day {item['day'] if item['day'] != -1 else 'last'} {item['time']}"
                 )
