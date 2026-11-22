@@ -66,23 +66,61 @@
     return Math.round((Date.UTC(year, date.getMonth(), date.getDate()) - Date.UTC(year, 0, 0)) / 86400000);
   }
 
-  /* ---------- Gegevens ---------- */
+  /* ---------- Gegevens (met tijdstempels voor sync) ---------- */
+
+  function normalizeField(value) {
+    if (typeof value === 'string') return { text: value, ts: 0 };
+    const obj = (value && typeof value === 'object') ? value : {};
+    return {
+      text: typeof obj.text === 'string' ? obj.text : '',
+      ts: Number(obj.ts) || 0
+    };
+  }
 
   function normalizeEntry(value) {
-    if (typeof value === 'string') return { notes: value, slots: {} };
+    if (typeof value === 'string') return { notes: { text: value, ts: 0 }, slots: {} };
     const obj = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
     const slots = {};
     if (obj.slots && typeof obj.slots === 'object') {
-      for (const [time, text] of Object.entries(obj.slots)) {
-        if (typeof text === 'string' && text.trim()) slots[time] = text;
+      for (const [time, field] of Object.entries(obj.slots)) {
+        slots[time] = normalizeField(field);
       }
     }
-    return { notes: typeof obj.notes === 'string' ? obj.notes : '', slots };
+    return { notes: normalizeField(obj.notes), slots };
   }
 
   function hasContent(entry) {
     const clean = normalizeEntry(entry);
-    return Boolean(clean.notes.trim()) || Object.keys(clean.slots).length > 0;
+    return Boolean(clean.notes.text.trim()) ||
+      Object.values(clean.slots).some((field) => Boolean(field.text.trim()));
+  }
+
+  function notesSignature() {
+    const sorted = {};
+    for (const key of Object.keys(notes).sort()) {
+      const entry = normalizeEntry(notes[key]);
+      const slots = {};
+      for (const time of Object.keys(entry.slots).sort()) slots[time] = entry.slots[time];
+      sorted[key] = { notes: entry.notes, slots };
+    }
+    return JSON.stringify(sorted);
+  }
+
+  function mergeRemoteDays(remoteDays) {
+    let changed = false;
+    for (const [key, remoteDay] of Object.entries(remoteDays)) {
+      if (!isValidKey(key) || !remoteDay || typeof remoteDay !== 'object') continue;
+      const remote = normalizeEntry(remoteDay);
+      const local = normalizeEntry(notes[key] || { notes: { text: '', ts: 0 }, slots: {} });
+
+      if (remote.notes.ts > local.notes.ts) local.notes = remote.notes;
+      for (const [time, field] of Object.entries(remote.slots)) {
+        if (!local.slots[time] || field.ts > local.slots[time].ts) local.slots[time] = field;
+      }
+      if (!notes[key] || JSON.stringify(local) !== JSON.stringify(normalizeEntry(notes[key]))) changed = true;
+      notes[key] = local;
+    }
+    return changed;
   }
 
   function loadNotes() {
@@ -97,7 +135,7 @@
       for (const [key, value] of Object.entries(raw)) {
         if (isValidKey(key)) {
           const entry = normalizeEntry(value);
-          if (hasContent(entry)) result[key] = entry;
+          if (Object.keys(entry.slots).length || entry.notes.text) result[key] = entry;
         }
       }
     }
@@ -115,8 +153,8 @@
   }
 
   function getEntry(key, create) {
-    if (!notes[key] && !create) return { notes: '', slots: {} };
-    if (!notes[key]) notes[key] = { notes: '', slots: {} };
+    if (!notes[key] && !create) return { notes: { text: '', ts: 0 }, slots: {} };
+    if (!notes[key]) notes[key] = { notes: { text: '', ts: 0 }, slots: {} };
     notes[key] = normalizeEntry(notes[key]);
     return notes[key];
   }
@@ -174,13 +212,9 @@
   }
 
   function refreshSyncBase() {
-    if (!settings.autosave) {
-      updateSync('Lokaal opgeslagen');
-    } else if (!settings.token || !settings.owner || !settings.repo) {
-      updateSync('Lokaal — vul GitHub-instellingen in');
-    } else {
-      updateSync('Autosave aan', 'ok');
-    }
+    if (!settings.autosave) updateSync('Lokaal opgeslagen');
+    else if (!settings.token || !settings.owner || !settings.repo) updateSync('Lokaal — vul GitHub-instellingen in');
+    else updateSync('Autosave aan', 'ok');
   }
 
   function applySettings() {
@@ -199,7 +233,6 @@
   function buildTimeGrid() {
     for (const time of TIMES) {
       const isHour = time.endsWith(':00');
-
       const label = document.createElement('div');
       label.className = `time${isHour ? ' hour' : ''}`;
       label.textContent = time;
@@ -215,8 +248,7 @@
       input.spellcheck = true;
       input.addEventListener('input', () => {
         const entry = getEntry(currentKey, true);
-        if (input.value.trim()) entry.slots[time] = input.value;
-        else delete entry.slots[time];
+        entry.slots[time] = { text: input.value, ts: Date.now() };
         scheduleLocalSave();
         scheduleAutoPush();
       });
@@ -238,19 +270,19 @@
     el.dateShort.textContent = shortDate(date);
     el.pageDate.textContent = `${WEEKDAYS[date.getDay()]} ${longDate(date)}`;
     el.pageNum.textContent = String(dayOfYear(date));
-    for (const time of TIMES) slotInputs[time].value = entry.slots[time] || '';
-    el.notesInput.value = entry.notes || '';
+    for (const time of TIMES) slotInputs[time].value = (entry.slots[time] || {}).text || '';
+    el.notesInput.value = entry.notes.text || '';
     autoGrowNotes();
   }
 
-  /* ---------- Opslaan ---------- */
+  /* ---------- Lokaal opslaan ---------- */
 
   let localTimer = null;
 
   function tidyNotes() {
     for (const key of Object.keys(notes)) {
       const entry = normalizeEntry(notes[key]);
-      if (hasContent(entry)) notes[key] = entry;
+      if (Object.keys(entry.slots).length || entry.notes.text) notes[key] = entry;
       else delete notes[key];
     }
   }
@@ -285,7 +317,7 @@
     goToDate(dateKey(date));
   }
 
-  /* ---------- GitHub ---------- */
+  /* ---------- GitHub sync ---------- */
 
   function toBase64(text) {
     const bytes = new TextEncoder().encode(text);
@@ -296,6 +328,12 @@
     return btoa(binary);
   }
 
+  function fromBase64(text) {
+    const binary = atob(String(text).replace(/\s/g, ''));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
   function buildMarkdown() {
     const keys = Object.keys(notes).filter((key) => isValidKey(key) && hasContent(notes[key])).sort().reverse();
     const lines = ['# Notities', ''];
@@ -304,17 +342,13 @@
       const entry = normalizeEntry(notes[key]);
       const date = parseKey(key);
       lines.push(`## ${WEEKDAYS[date.getDay()]} ${longDate(date)}`, '');
-      const times = Object.keys(entry.slots).sort();
+      const times = Object.keys(entry.slots).filter((time) => entry.slots[time].text.trim()).sort();
       if (times.length) {
         lines.push('### Afspraken', '');
-        for (const time of times) {
-          lines.push(`- ${time} — ${String(entry.slots[time]).replace(/\s+/g, ' ').trim()}`);
-        }
+        for (const time of times) lines.push(`- ${time} — ${entry.slots[time].text.replace(/\s+/g, ' ').trim()}`);
         lines.push('');
       }
-      if (entry.notes.trim()) {
-        lines.push('### Notities', '', entry.notes.trim(), '');
-      }
+      if (entry.notes.text.trim()) lines.push('### Notities', '', entry.notes.text.trim(), '');
     }
     return `${lines.join('\n')}\n`;
   }
@@ -332,61 +366,124 @@
     return base + [cfg.path, filename].filter(Boolean).map(encodeURIComponent).join('/');
   }
 
+  async function fetchFile(cfg, filename) {
+    const response = await fetch(`${contentsUrl(cfg, filename)}?ref=${encodeURIComponent(cfg.branch)}`, {
+      headers: apiHeaders(cfg.token)
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.json()).message || ''; } catch (_) { /* negeer */ }
+      throw new Error(`GitHub gaf status ${response.status}${detail ? `: ${detail}` : ''}`);
+    }
+    const data = await response.json();
+    return { sha: data.sha || null, text: fromBase64(data.content || '') };
+  }
+
+  async function pushFile(cfg, filename, content, sha) {
+    const payload = {
+      message: `Notities bijgewerkt — ${longDate(new Date())}`,
+      content: toBase64(content),
+      branch: cfg.branch
+    };
+    if (sha) payload.sha = sha;
+    const response = await fetch(contentsUrl(cfg, filename), {
+      method: 'PUT',
+      headers: { ...apiHeaders(cfg.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (response.ok) return { ok: true, sha: (await response.json()).content?.sha || sha };
+    let detail = '';
+    try { detail = (await response.json()).message || ''; } catch (_) { /* negeer */ }
+    return { ok: false, status: response.status, message: detail };
+  }
+
   let pushTimer = null;
   let pushInFlight = false;
   let pushQueued = false;
   let offlinePending = false;
-  let lastPushed = null;
+  let lastSyncedSignature = null;
 
-  async function performPush(cfg, content, silent) {
+  async function syncToGithub(silent) {
+    if (pushInFlight) { pushQueued = true; return; }
+    settings = loadSettings();
+    if (silent && !settings.autosave) return;
+    if (!settings.token || !settings.owner || !settings.repo) {
+      updateSync('Lokaal — vul GitHub-instellingen in');
+      if (!silent) {
+        fillSettingsForm();
+        openOverlay('settings-overlay');
+        showToast('Vul eerst GitHub-instellingen in', true);
+      }
+      return;
+    }
+    if (!navigator.onLine) {
+      offlinePending = true;
+      updateSync('Offline — sync wacht op verbinding', 'error');
+      return;
+    }
+    flushLocalSave();
     pushInFlight = true;
-    updateSync(silent ? 'Synchroniseren…' : 'Exporteren…');
     el.exportBtn.disabled = true;
+    updateSync(silent ? 'Synchroniseren…' : 'Exporteren…');
     try {
-      const url = contentsUrl(cfg, 'agenda.md');
-      const current = await fetch(`${url}?ref=${encodeURIComponent(cfg.branch)}`, {
-        headers: apiHeaders(cfg.token)
-      });
-      let sha = null;
-      if (current.status === 404) {
-        sha = null;
-      } else if (!current.ok) {
-        let detail = '';
-        try { detail = (await current.json()).message || ''; } catch (_) { /* negeer */ }
-        throw new Error(`GitHub gaf status ${current.status}${detail ? `: ${detail}` : ''}`);
-      } else {
-        sha = (await current.json()).sha || null;
+      const cfg = settings;
+      const remote = await fetchFile(cfg, 'agenda.json');
+      if (remote) {
+        try {
+          const parsed = JSON.parse(remote.text);
+          if (parsed && parsed.days && typeof parsed.days === 'object') mergeRemoteDays(parsed.days);
+        } catch (_) { /* onleesbaar bestand: lokale data bewaren */ }
+      }
+      persistNotes();
+      renderDay();
+
+      const signature = notesSignature();
+      if (signature === lastSyncedSignature && remote) {
+        updateSync('Alles gesynchroniseerd', 'ok');
+        return;
       }
 
-      const payload = {
-        message: `Notities bijgewerkt — ${longDate(new Date())}`,
-        content: toBase64(content),
-        branch: cfg.branch
-      };
-      if (sha) payload.sha = sha;
+      let jsonSha = remote ? remote.sha : null;
+      let result = await pushFile(cfg, 'agenda.json', JSON.stringify({
+        schema: 1,
+        updated: new Date().toISOString(),
+        days: notes
+      }), jsonSha);
 
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: { ...apiHeaders(cfg.token), 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        let detail = '';
-        try { detail = (await response.json()).message || ''; } catch (_) { /* negeer */ }
-        throw new Error(`Export mislukt (${response.status})${detail ? `: ${detail}` : ''}`);
+      if (!result.ok && result.status === 409) {
+        const again = await fetchFile(cfg, 'agenda.json');
+        if (again) {
+          try {
+            const parsed = JSON.parse(again.text);
+            if (parsed && parsed.days) mergeRemoteDays(parsed.days);
+          } catch (_) { /* negeer */ }
+          jsonSha = again.sha;
+          result = await pushFile(cfg, 'agenda.json', JSON.stringify({
+            schema: 1,
+            updated: new Date().toISOString(),
+            days: notes
+          }), jsonSha);
+        }
       }
+      if (!result.ok) throw new Error(`Sync mislukt (${result.status})${result.message ? `: ${result.message}` : ''}`);
 
-      lastPushed = content;
+      let markdownRemote = await fetchFile(cfg, 'agenda.md');
+      let mdResult = await pushFile(cfg, 'agenda.md', buildMarkdown(), markdownRemote ? markdownRemote.sha : null);
+      if (!mdResult.ok && mdResult.status === 409) {
+        markdownRemote = await fetchFile(cfg, 'agenda.md');
+        mdResult = await pushFile(cfg, 'agenda.md', buildMarkdown(), markdownRemote ? markdownRemote.sha : null);
+      }
+      if (!mdResult.ok) throw new Error(`Sync van agenda.md mislukt (${mdResult.status})`);
+
+      lastSyncedSignature = signature;
       offlinePending = false;
       const now = new Date();
       updateSync(`Gesynchroniseerd ${pad(now.getHours())}:${pad(now.getMinutes())}`, 'ok');
-      if (!silent) showToast('Geëxporteerd naar GitHub');
-      return true;
+      if (!silent) showToast('Gesynchroniseerd met GitHub');
     } catch (error) {
-      const message = error && error.message ? error.message : 'Synchroniseren mislukt';
       updateSync('Sync mislukt — tik op ⬆', 'error');
-      showToast(message, true);
-      return false;
+      showToast(error && error.message ? error.message : 'Synchroniseren mislukt', true);
     } finally {
       pushInFlight = false;
       el.exportBtn.disabled = false;
@@ -399,53 +496,9 @@
 
   function scheduleAutoPush() {
     if (!settings.autosave) return;
-    if (pushInFlight) {
-      pushQueued = true;
-      return;
-    }
+    if (pushInFlight) { pushQueued = true; return; }
     clearTimeout(pushTimer);
-    pushTimer = setTimeout(runAutoPush, 5000);
-  }
-
-  async function runAutoPush() {
-    if (!settings.autosave) return;
-    if (pushInFlight) {
-      pushQueued = true;
-      return;
-    }
-    if (!navigator.onLine) {
-      offlinePending = true;
-      updateSync('Offline — sync wacht op verbinding', 'error');
-      return;
-    }
-    settings = loadSettings();
-    if (!settings.token || !settings.owner || !settings.repo) {
-      updateSync('Lokaal — vul GitHub-instellingen in');
-      return;
-    }
-    const content = buildMarkdown();
-    if (content === lastPushed) {
-      updateSync('Alles gesynchroniseerd', 'ok');
-      return;
-    }
-    await performPush(settings, content, true);
-  }
-
-  async function manualExport() {
-    flushLocalSave();
-    settings = loadSettings();
-    if (!settings.token || !settings.owner || !settings.repo) {
-      fillSettingsForm();
-      openOverlay('settings-overlay');
-      showToast('Vul eerst GitHub-instellingen in', true);
-      return;
-    }
-    clearTimeout(pushTimer);
-    if (pushInFlight) {
-      pushQueued = true;
-      return;
-    }
-    await performPush(settings, buildMarkdown(), false);
+    pushTimer = setTimeout(() => syncToGithub(true), 5000);
   }
 
   function downloadMarkdown() {
@@ -503,18 +556,16 @@
         const date = parseKey(key);
         const parts = [];
         for (const time of Object.keys(entry.slots).sort()) {
-          parts.push({ label: time, text: String(entry.slots[time]) });
+          if (entry.slots[time].text.trim()) parts.push({ label: time, text: entry.slots[time].text });
         }
-        if (entry.notes.trim()) parts.push({ label: 'Notities', text: entry.notes });
+        if (entry.notes.text.trim()) parts.push({ label: 'Notities', text: entry.notes.text });
         return { key, date, parts };
       });
 
     const matches = days.filter((day) => {
       if (!query) return true;
       const haystack = [
-        longDate(day.date),
-        WEEKDAYS[day.date.getDay()],
-        day.key,
+        longDate(day.date), WEEKDAYS[day.date.getDay()], day.key,
         ...day.parts.map((part) => `${part.label} ${part.text}`)
       ].join(' ').toLocaleLowerCase('nl');
       return haystack.includes(query);
@@ -613,16 +664,14 @@
 
   function closeOverlay(id) {
     $(id).hidden = true;
-    if (!document.querySelector('.sheet-overlay:not([hidden])')) {
-      document.body.classList.remove('overlay-open');
-    }
+    if (!document.querySelector('.sheet-overlay:not([hidden])')) document.body.classList.remove('overlay-open');
   }
 
   /* ---------- Gebeurtenissen ---------- */
 
   el.notesInput.addEventListener('input', () => {
     const entry = getEntry(currentKey, true);
-    entry.notes = el.notesInput.value;
+    entry.notes = { text: el.notesInput.value, ts: Date.now() };
     autoGrowNotes();
     scheduleLocalSave();
     scheduleAutoPush();
@@ -672,7 +721,7 @@
   });
 
   $('test-connection').addEventListener('click', testConnection);
-  el.exportBtn.addEventListener('click', manualExport);
+  el.exportBtn.addEventListener('click', () => syncToGithub(false));
   $('download-md').addEventListener('click', downloadMarkdown);
 
   window.addEventListener('online', () => {
@@ -682,7 +731,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       flushLocalSave();
-      if (settings.autosave) runAutoPush();
+      if (settings.autosave) syncToGithub(true);
     }
   });
   window.addEventListener('pagehide', flushLocalSave);
@@ -692,6 +741,11 @@
   buildTimeGrid();
   applySettings();
   renderDay();
+
+  if (settings.autosave && settings.token && settings.owner && settings.repo) {
+    setTimeout(() => syncToGithub(true), 800);
+    setInterval(() => syncToGithub(true), 60000);
+  }
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     window.addEventListener('load', () => {
