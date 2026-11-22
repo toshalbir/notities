@@ -1,8 +1,8 @@
 {
-  "name": "Notities · Agenda",
-  "short_name": "Notities",
-  "description": "Dagelijkse agenda met tijdvakken en notities, automatisch opgeslagen naar GitHub.",
-  "lang": "nl",
+  "name": "Notes · Agenda",
+  "short_name": "Notes",
+  "description": "Daily agenda with time slots and notes, automatically synced to GitHub.",
+  "lang": "en",
   "dir": "ltr",
   "start_url": "./",
   "scope": "./",
