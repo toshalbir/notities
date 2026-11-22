@@ -14,7 +14,7 @@
 
   const TIMES = [];
   const pad = (n) => String(n).padStart(2, '0');
-  for (let minutes = 6 * 60; minutes <= 20 * 60; minutes += 15) {
+  for (let minutes = 6 * 60; minutes <= 20 * 60; minutes += 30) {
     TIMES.push(`${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`);
   }
 
@@ -77,13 +77,26 @@
     };
   }
 
+  function slotBucket(value) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(String(value));
+    if (!match) return null;
+    const minutes = Number(match[1]) * 60 + Number(match[2]);
+    const bucket = Math.floor(minutes / 30) * 30;
+    if (bucket < 6 * 60 || bucket > 20 * 60) return null;
+    return `${pad(Math.floor(bucket / 60))}:${pad(bucket % 60)}`;
+  }
+
   function normalizeEntry(value) {
     if (typeof value === 'string') return { notes: { text: value, ts: 0 }, slots: {} };
     const obj = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
     const slots = {};
     if (obj.slots && typeof obj.slots === 'object') {
       for (const [time, field] of Object.entries(obj.slots)) {
-        slots[time] = normalizeField(field);
+        const bucket = slotBucket(time);
+        if (!bucket) continue;
+        const incoming = normalizeField(field);
+        const current = slots[bucket];
+        if (!current || incoming.ts > current.ts) slots[bucket] = incoming;
       }
     }
     return { notes: normalizeField(obj.notes), slots };
@@ -200,6 +213,7 @@
   }
 
   let notes = loadNotes();
+  persistNotes(); // fold any old 15-minute keys into the half-hour grid
   let settings = loadSettings();
   let currentKey = localStorage.getItem(KEYS.last) || dateKey(new Date());
   if (!isValidKey(currentKey)) currentKey = dateKey(new Date());
@@ -260,7 +274,7 @@
 
   function autoGrowNotes() {
     el.notesInput.style.height = 'auto';
-    el.notesInput.style.height = `${Math.max(el.notesInput.scrollHeight, 170)}px`;
+    el.notesInput.style.height = `${Math.max(el.notesInput.scrollHeight, 200)}px`;
   }
 
   function renderDay() {
