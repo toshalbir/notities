@@ -1,10 +1,10 @@
 # Notes · Agenda
 
-A light, clean daily agenda for your iPhone: one page per day with 15-minute slots from 06:00 to 20:00, a separate area for free notes, and automatic sync to GitHub. A fullscreen Windows app with the same look is included.
+A warm paper-style daily agenda for your iPhone: one page per day with half-hour slots from 06:00 to 20:00, a separate area for free notes, and automatic sync to GitHub. A fullscreen Windows app with the same open-book Moleskine look is included.
 
 ## Features
 
-- 15-minute grid (6:00, 6:15, 6:30, …), like a Moleskine daily planner. Tap a time to type there.
+- Half-hour grid (6:00, 6:30, 7:00, …) on cream paper with a red margin and ruled lines. Tap a time to type there.
 - Free notes at the bottom of the page, with ruled lines.
 - Handwriting font (Patrick Hand) or plain system font — switch in ⚙ Settings.
 - Search by text, time or date; tap a result to jump to that day.
@@ -55,7 +55,7 @@ The folder name `notities` and the branch are configurable. Autosave waits until
 
 ## Windows app (7 days side by side)
 
-`windows/` contains a fullscreen Tkinter app in the same style, laid out like an open Moleskine week: Monday–Wednesday on the left page, Thursday–Friday on the right page, and Saturday and Sunday stacked in the rightmost column. Each day has a 15-minute grid from 06:00 to 20:00 and a notes field. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins).
+`windows/` contains a fullscreen Tkinter app in the same style, laid out like an open Moleskine week: Monday–Wednesday on the left page, Thursday–Friday on the right page, and Saturday and Sunday stacked in the rightmost column. The pages fill the full window height, with a centre fold, soft shadow and cream paper. Each day has a half-hour grid from 06:00 to 20:00 and a notes field. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins). The small ✕ next to a date clears that whole day (including its notes). Print puts the entire week on one landscape page; if no printer is available, it opens a PDF instead. Old 15-minute entries are folded into the nearest half-hour slot automatically, so no notes are lost.
 
 1. In the Windows app, enter the same username, repository, branch, folder and token as on the iPhone (⚙).
 2. `windows/maak-exe.bat` builds `Notes.exe` (PyInstaller is installed automatically if needed).
