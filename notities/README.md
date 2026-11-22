@@ -27,7 +27,7 @@ One read-only `backups/YYYY-MM.json` snapshot is written per month, so older mon
 
 ### Siri / Shortcuts
 
-The app accepts `?date=YYYY-MM-DD` (or `#YYYY-MM-DD`) in its URL. In iOS Shortcuts, use **Open URLs** with `https://toshalbir.github.io/notities/?date=2026-11-30` (choose whichever date you need, or pass the Shortcut's Date input) to jump straight to that day. A haptic tick is given on supported devices when you type or tick an item.
+The app accepts `?date=YYYY-MM-DD`, `?date=today`, `?date=tomorrow`, `?date=yesterday` (or `#YYYY-MM-DD`) in its URL. In iOS Shortcuts, use **Open URLs** with `https://toshalbir.github.io/notities/?date=2026-11-30` — or build the URL with a **Format Date** action (`yyyy-MM-dd`) to ask Siri for any date. For a fullscreen icon that always opens today, visit `https://toshalbir.github.io/notities/?date=today` in Safari once and choose **Share ▸ Add to Home Screen**; the icon keeps that URL. A haptic tick is given on supported devices when you type or tick an item.
 
 ## Put it on GitHub
 

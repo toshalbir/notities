@@ -1129,9 +1129,14 @@
   buildTimeGrid();
   applySettings();
 
-  // Siri Shortcut / bookmark support: ?date=YYYY-MM-DD or #YYYY-MM-DD opens that day.
+  // Siri Shortcut / bookmark support: ?date=YYYY-MM-DD, ?date=today, ?date=tomorrow
+  // or #YYYY-MM-DD opens that day. Relative words make a home-screen icon future-proof.
   const requestedDate = new URLSearchParams(location.search).get('date') || location.hash.replace(/^#/, '');
-  if (isValidKey(requestedDate)) goToDate(requestedDate);
+  let startKey = requestedDate;
+  if (startKey === 'today') startKey = dateKey(new Date());
+  else if (startKey === 'tomorrow') startKey = dateKey(shiftDate(new Date(), 1));
+  else if (startKey === 'yesterday') startKey = dateKey(shiftDate(new Date(), -1));
+  if (isValidKey(startKey)) goToDate(startKey);
   else renderDay();
 
   if (settings.autosave && settings.token && settings.owner && settings.repo) {
