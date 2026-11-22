@@ -8,12 +8,6 @@
 - 11:30 — Test
 - 18:00 — Test
 
-## Saturday 21 November 2026
-
-### Appointments
-
-- 15:00 — 123
-
 ## Wednesday 18 November 2026
 
 ### Appointments
