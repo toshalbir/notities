@@ -1,0 +1,33 @@
+{
+  "name": "Huishoudboekje",
+  "short_name": "Boekje",
+  "description": "Uitgaven noteren op iOS en Windows, met week-, maand- en categorietotalen en automatische sync via Supabase.",
+  "lang": "nl",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e9e3d6",
+  "theme_color": "#2f4a3c",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
