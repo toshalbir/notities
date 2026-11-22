@@ -820,7 +820,8 @@ end $$;`;
         state.expenses.push(incoming);
         changed = true;
       } else if (!local.dirty && incoming.updatedAt > local.updatedAt) {
-        Object.assign(local, incoming);
+        // Supabase has no auto/recurring columns: keep the local markers.
+        Object.assign(local, incoming, { auto: local.auto, recurringId: local.recurringId });
         changed = true;
       }
     }
