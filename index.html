@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Notities">
+  <meta name="theme-color" content="#2f241e">
+  <meta name="description" content="Een professioneel papieren dagboek voor je iPhone: één pagina per dag, doorzoekbaar en exporteerbaar naar GitHub.">
+  <title>Notities · Dagboek</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-emblem" aria-hidden="true">N<span>.</span></div>
+        <div class="brand-text">
+          <strong>Notities</strong>
+          <small>Dagboek &amp; agenda</small>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" id="open-search" type="button" aria-label="Notities zoeken" title="Zoeken">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="M15.4 15.4 20 20"/></svg>
+        </button>
+        <button class="icon-btn" id="open-settings" type="button" aria-label="Instellingen" title="Instellingen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M4.5 7.5l2.2 1.3M17.3 15.2l2.2 1.3M4.5 16.5l2.2-1.3M17.3 8.8l2.2-1.3"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="datebar" aria-label="Kies een dag">
+      <button class="nav-arrow" id="prev-day" type="button" aria-label="Vorige dag">‹</button>
+      <div class="date-field">
+        <input type="date" id="date-picker" aria-label="Ga naar datum">
+        <span id="weekday-label" class="weekday-label"></span>
+      </div>
+      <button class="nav-arrow" id="next-day" type="button" aria-label="Volgende dag">›</button>
+      <button class="today-btn" id="go-today" type="button">Vandaag</button>
+    </nav>
+
+    <main class="workspace">
+      <article class="notebook" aria-label="Dagboekpagina">
+        <div class="binding" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="paper">
+          <header class="paper-head">
+            <div class="paper-head-left">
+              <span class="paper-kicker">Dagboek</span>
+              <h2 id="paper-date"></h2>
+            </div>
+            <span class="paper-page" id="paper-page"></span>
+          </header>
+          <div class="paper-body">
+            <div class="margin-rule" aria-hidden="true"></div>
+            <textarea id="note-input" aria-label="Notities voor deze dag" placeholder="Schrijf hier je notities voor vandaag…" spellcheck="true" autocapitalize="sentences" autocorrect="on"></textarea>
+          </div>
+          <footer class="paper-foot">
+            <span class="save-state" id="save-state">Nieuwe pagina</span>
+            <span class="char-count" id="char-count">0 tekens</span>
+          </footer>
+        </div>
+      </article>
+    </main>
+
+    <footer class="actionbar">
+      <button class="action-btn primary" id="export-github" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 17.5v2h15v-2"/></svg>
+        <span class="btn-label">Exporteer naar GitHub</span>
+      </button>
+      <button class="action-btn secondary" id="download-md" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.5h6l3 3v14H8zM14 3.5v3h3M10.5 12h4M10.5 15.5h4"/></svg>
+        <span class="btn-label">Download als .md-bestand</span>
+      </button>
+    </footer>
+  </div>
+
+  <div class="sheet-overlay" id="search-overlay" hidden>
+    <section class="panel" role="dialog" aria-modal="true" aria-labelledby="search-title">
+      <header class="panel-head">
+        <div>
+          <span class="panel-kicker">Doorzoek je dagboek</span>
+          <h2 id="search-title">Notities zoeken</h2>
+        </div>
+        <button class="close-btn" type="button" data-close="search-overlay" aria-label="Sluiten">✕</button>
+      </header>
+      <div class="search-field">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="M15.4 15.4 20 20"/></svg>
+        <input type="search" id="search-input" placeholder="Zoek op woord, datum of weekdag" autocomplete="off" enterkeyhint="search">
+      </div>
+      <p class="search-meta" id="search-meta"></p>
+      <div class="results" id="search-results"></div>
+    </section>
+  </div>
+
+  <div class="sheet-overlay" id="settings-overlay" hidden>
+    <section class="panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header class="panel-head">
+        <div>
+          <span class="panel-kicker">Alleen op dit apparaat</span>
+          <h2 id="settings-title">GitHub-instellingen</h2>
+        </div>
+        <button class="close-btn" type="button" data-close="settings-overlay" aria-label="Sluiten">✕</button>
+      </header>
+      <form id="settings-form" autocomplete="off">
+        <div class="form-row">
+          <label for="cfg-owner">Gebruikersnaam / eigenaar</label>
+          <input id="cfg-owner" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="bijv. toshk" required>
+        </div>
+        <div class="form-row">
+          <label for="cfg-repo">Repository</label>
+          <input id="cfg-repo" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="bijv. notities" required>
+        </div>
+        <div class="form-row-pair">
+          <div class="form-row">
+            <label for="cfg-branch">Branch</label>
+            <input id="cfg-branch" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="main">
+          </div>
+          <div class="form-row">
+            <label for="cfg-path">Map</label>
+            <input id="cfg-path" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="notities">
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="cfg-token">Toegangstoken</label>
+          <input id="cfg-token" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <p class="hint">
+          Maak een <strong>fine-grained token</strong> met alleen <em>Contents: read and write</em> voor deze ene repository.
+          Het token staat alleen in de opslag van deze browser en wordt nooit in de app-code bewaard.
+        </p>
+        <p class="connection-status" id="connection-status" role="status"></p>
+        <div class="form-actions">
+          <button class="action-btn secondary" id="test-connection" type="button">Controleer verbinding</button>
+          <button class="action-btn primary" type="submit">Opslaan</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
