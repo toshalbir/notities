@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Notes">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fffdf6">
+  <meta name="description" content="Daily agenda with time slots, notes and automatic sync to GitHub.">
+  <title>Notes</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css?v=11">
+</head>
+<body data-font="hand">
+  <div class="app">
+    <header class="topbar">
+      <button class="nav-btn" id="prev-day" type="button" aria-label="Previous day">‹</button>
+      <div class="date-center">
+        <input type="date" id="date-picker" aria-label="Go to date">
+        <span id="date-short">Sun 22 Nov</span>
+      </div>
+      <button class="nav-btn" id="next-day" type="button" aria-label="Next day">›</button>
+      <span class="spacer"></span>
+      <button class="text-btn" id="go-today" type="button">Today</button>
+      <button class="icon-btn" id="open-search" type="button" aria-label="Search notes" title="Search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="M15.4 15.4 20 20"/></svg>
+      </button>
+      <button class="icon-btn" id="open-settings" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M4.5 7.5l2.2 1.3M17.3 15.2l2.2 1.3M4.5 16.5l2.2-1.3M17.3 8.8l2.2-1.3"/></svg>
+      </button>
+    </header>
+
+    <main class="workspace">
+      <article class="page" aria-label="Agenda page for this day">
+        <header class="page-head">
+          <span id="page-date">Sunday 22 November 2026</span>
+          <span class="page-num" id="page-num">326</span>
+        </header>
+
+        <div class="agenda">
+          <div class="time-col" id="time-col" aria-hidden="true"></div>
+          <div class="slot-col" id="slot-col">
+            <div class="now-line" id="now-line" aria-hidden="true"></div>
+          </div>
+          <div class="done-col" id="done-col" aria-label="Mark appointments done"></div>
+        </div>
+
+        <div class="last-week" id="last-week"></div>
+
+        <section class="free-notes">
+          <h2>Notes</h2>
+          <div class="notes-area">
+            <div class="notes-rule" aria-hidden="true"></div>
+            <textarea id="notes-input" aria-label="General notes for this day" placeholder="General notes for this day…" spellcheck="true" autocapitalize="sentences" autocorrect="on"></textarea>
+          </div>
+        </section>
+      </article>
+    </main>
+
+    <footer class="actionbar">
+      <span class="sync" id="sync-status" role="status">Saved locally</span>
+      <button class="mini-btn" id="copy-day" type="button" title="Copy day" aria-label="Copy day to clipboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="12" height="13" rx="1.5"/><path d="M9 7V4.5h10V17"/></svg>
+      </button>
+      <button class="mini-btn" id="download-md" type="button" title="Download as .md" aria-label="Download as .md">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11M8 10.5l4 4 4-4M4.5 17.5v2h15v-2"/></svg>
+      </button>
+      <button class="mini-btn accent" id="export-github" type="button" title="Sync to GitHub now" aria-label="Sync to GitHub now">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5v-11M8 13.5l4-4 4 4M4.5 6.5v-2h15v2"/></svg>
+      </button>
+    </footer>
+  </div>
+
+  <div class="sheet-overlay" id="search-overlay" hidden>
+    <section class="panel" role="dialog" aria-modal="true" aria-labelledby="search-title">
+      <header class="panel-head">
+        <h2 id="search-title">Search</h2>
+        <button class="close-btn" type="button" data-close="search-overlay" aria-label="Close">✕</button>
+      </header>
+      <div class="search-field">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="M15.4 15.4 20 20"/></svg>
+        <input type="search" id="search-input" placeholder="Word, time or date" autocomplete="off" enterkeyhint="search">
+      </div>
+      <p class="search-meta" id="search-meta"></p>
+      <div class="tag-chips" id="tag-chips"></div>
+      <div class="results" id="search-results"></div>
+    </section>
+  </div>
+
+  <div class="sheet-overlay" id="settings-overlay" hidden>
+    <section class="panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header class="panel-head">
+        <h2 id="settings-title">Settings</h2>
+        <button class="close-btn" type="button" data-close="settings-overlay" aria-label="Close">✕</button>
+      </header>
+      <form id="settings-form" autocomplete="off">
+        <div class="form-row">
+          <label for="cfg-owner">Username</label>
+          <input id="cfg-owner" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. toshk">
+        </div>
+        <div class="form-row">
+          <label for="cfg-repo">Repository</label>
+          <input id="cfg-repo" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. notes">
+        </div>
+        <div class="form-row-pair">
+          <div class="form-row">
+            <label for="cfg-branch">Branch</label>
+            <input id="cfg-branch" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="main">
+          </div>
+          <div class="form-row">
+            <label for="cfg-path">Folder</label>
+            <input id="cfg-path" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="notities">
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="cfg-token">Access token</label>
+          <input id="cfg-token" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label for="cfg-font">Agenda font</label>
+          <select id="cfg-font">
+            <option value="hand">Handwriting (Patrick Hand)</option>
+            <option value="system">Plain (SF / Helvetica)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="cfg-ink">Ink colour</label>
+          <select id="cfg-ink">
+            <option value="blue">Blue-black</option>
+            <option value="black">Black</option>
+            <option value="gray">Pencil grey</option>
+          </select>
+        </div>
+        <div class="recurring-block">
+          <h3>Recurring items</h3>
+          <p class="hint">Weekly appointments or fixed monthly payments (e.g. direct debits). Use -1 for the last day of the month.</p>
+          <div id="rule-list" class="rule-list"></div>
+          <div class="rule-form">
+            <input id="rule-text" type="text" placeholder="e.g. Rent" aria-label="Recurring item text">
+            <input id="rule-time" type="text" value="09:00" placeholder="09:00" aria-label="Recurring item time">
+            <select id="rule-repeat" aria-label="Repeat">
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+            </select>
+            <input id="rule-detail" type="number" value="1" placeholder="day / weekday" aria-label="Day or weekday">
+            <button id="rule-add" class="secondary-btn" type="button">Add</button>
+          </div>
+        </div>
+        <label class="toggle-row" for="cfg-autosave">
+          <input id="cfg-autosave" type="checkbox" checked>
+          <span>Automatically sync to GitHub</span>
+        </label>
+        <p class="hint">
+          Autosave waits ~5 seconds after you stop typing, then updates
+          <code>notities/agenda.json</code> and <code>notities/agenda.md</code>. The JSON file is shared
+          with the Windows app. Token: fine-grained with only
+          <strong>Contents: read and write</strong>. Everything also stays locally on this device.
+        </p>
+        <p class="connection-status" id="connection-status" role="status"></p>
+        <div class="form-actions">
+          <button class="secondary-btn" id="test-connection" type="button">Check</button>
+          <button class="primary-btn" type="submit">Save</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js?v=11"></script>
+</body>
+</html>
