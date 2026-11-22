@@ -5,12 +5,29 @@ A warm paper-style daily agenda for your iPhone: one page per day with half-hour
 ## Features
 
 - Half-hour grid (6:00, 6:30, 7:00, …) on cream paper with a red margin and ruled lines. Tap a time to type there.
+- A red **now line** shows the current time; a small **○/✓** button marks an appointment done (double-click a Windows slot).
 - Free notes at the bottom of the page, with ruled lines.
-- Handwriting font (Patrick Hand) or plain system font — switch in ⚙ Settings.
-- Search by text, time or date; tap a result to jump to that day.
-- **Autosave to GitHub**: about 5 seconds after you stop typing, `notities/agenda.json` is updated (plus `agenda.md` as a readable copy). The sync status is shown at the bottom. The app also pulls changes from the Windows app every minute.
-- Manual export with the ⬆ button; ⬇ downloads a `.md` file without a token.
+- Handwriting font (Patrick Hand) or plain system font, plus blue-black / black / pencil-grey ink — switch in ⚙ Settings.
+- Search by text, time or date; tap a result to jump to that day. `#tags` in any note become clickable filter chips in Search.
+- A muted **Last week** line shows what was written seven days earlier.
+- **Copy day** puts the current day on the clipboard; ⬇ downloads a `.md` file without a token.
+- **Autosave to GitHub**: about 5 seconds after you stop typing, `notities/agenda.json` is updated (plus `agenda.md` as a readable copy). The sync status shows when a push is waiting and when it completed. The app also pulls changes from the Windows app every minute.
 - Everything is also stored locally on your device. The app is a PWA and works offline (only sync needs internet).
+
+### Recurring items
+
+In ⚙ Settings → **Recurring items** you can define rules that appear as pale hints in the matching slots:
+
+- **Weekly**: weekday `0` = Monday … `6` = Sunday, at a chosen time.
+- **Monthly**: day `1`–`31`, or `-1` for the **last day of the month** — ideal for rent, direct debits and other fixed payments. If a month is shorter than the chosen day, the item falls on that month's last day.
+
+Rules live in `agenda.json` under `templates` and sync both ways. Clearing a day hides a hint for **that date only**; it does not delete the rule. Tapping ✓ on a hint copies its text into the slot so you can tick it off.
+
+One read-only `backups/YYYY-MM.json` snapshot is written per month, so older months stay recoverable.
+
+### Siri / Shortcuts
+
+The app accepts `?date=YYYY-MM-DD` (or `#YYYY-MM-DD`) in its URL. In iOS Shortcuts, use **Open URLs** with `https://toshalbir.github.io/notities/?date=2026-11-30` (choose whichever date you need, or pass the Shortcut's Date input) to jump straight to that day. A haptic tick is given on supported devices when you type or tick an item.
 
 ## Put it on GitHub
 
@@ -36,7 +53,7 @@ Autosave is on by default and can be turned off in the same settings. The token 
 
 ### What goes to GitHub
 
-One file is authoritative for sync: `notities/agenda.json`. The app also writes `notities/agenda.md` as a readable copy, with each day's appointments and free notes:
+One file is authoritative for sync: `notities/agenda.json`. It contains `days` (with per-field timestamps, done marks and per-day hidden recurring hints) and `templates` (the recurring rules). The app also writes `notities/agenda.md` as a readable copy, with each day's appointments and free notes:
 
 ```markdown
 # Notes
@@ -55,11 +72,13 @@ The folder name `notities` and the branch are configurable. Autosave waits until
 
 ## Windows app (7 days side by side)
 
-`windows/` contains a fullscreen Tkinter app in the same style, laid out like an open Moleskine week: Monday–Wednesday on the left page, Thursday–Friday on the right page, and Saturday and Sunday stacked in the rightmost column. The pages fill the full window height, with a centre fold, soft shadow and cream paper. Each day has a half-hour grid from 06:00 to 20:00 and a notes field. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins). The small ✕ next to a date clears that whole day (including its notes). Print puts the entire week on one landscape page; if no printer is available, it opens a PDF instead. Old 15-minute entries are folded into the nearest half-hour slot automatically, so no notes are lost.
+`windows/` contains a fullscreen Tkinter app in the same style, laid out like an open Moleskine week: Monday–Wednesday on the left page, Thursday–Friday on the right page, and Saturday and Sunday stacked in the rightmost column (with its own clear scrollbar). The pages fill the full window height, with a centre fold, soft shadow and cream paper. Each day has a half-hour grid from 06:00 to 20:00 and a notes field. It uses the same GitHub settings and the same `agenda.json`, so changes from iPhone and Windows are merged per field (most recent timestamp wins). Old 15-minute entries are folded into the nearest half-hour slot automatically, so no notes are lost.
+
+Toolbar buttons: **Today**, **Big** (large read-only card for today), **Find** (`Ctrl+K`), **Rules** (weekly/monthly templates), **Mini** (always-on-top widget for the next seven days), **Copy**, **Print**, ↻ (sync), ⚙ (settings), ⛶ (fullscreen) and ✕ (quit). Month tabs on the left jump to a month. `Ctrl+Alt+N` brings the app to the front and returns to today. Double-click a slot to toggle its done tick. The small ✕ next to a date clears that whole day — including its notes and any recurring hints for that date. Print puts the entire week on one landscape page with a torn-paper edge; if no printer is available, it opens a PDF instead.
 
 1. In the Windows app, enter the same username, repository, branch, folder and token as on the iPhone (⚙).
-2. `windows/maak-exe.bat` builds `Notes.exe` (PyInstaller is installed automatically if needed).
-3. Escape temporarily leaves fullscreen; the ↻ button syncs immediately.
+2. `windows/maak-exe.bat` builds `Notities.exe` (PyInstaller is installed automatically if needed) and copies it to the Start menu and startup locations.
+3. Escape temporarily leaves fullscreen; the ↻ button syncs immediately. The status bar shows **Waiting to sync…** before a push.
 
 The iPhone app must use the latest `app.js`: older versions only write `agenda.md` and never read from GitHub. After an upload, reopen the app on the iPhone to refresh the service worker cache.
 
