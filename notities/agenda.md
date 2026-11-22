@@ -6,6 +6,7 @@
 
 - 09:00 — ok
 - 11:30 — Test
+- 18:00 — Test
 
 ## Saturday 21 November 2026
 
